@@ -16,7 +16,7 @@ jobs:
         run: |
           set -euo pipefail
           source_url=""
-          for candidate in "https://friendly-churos.netlify.app" "https://friendly-churros.netlify.app"; do
+          for candidate in "https://friendly-churros-22a86e.netlify.app"; do
             echo "Checking published site $candidate"
             if curl --fail --location --silent --show-error --max-time 20 "$candidate/" -o /tmp/aurea-candidate.html && grep -q '/zaposleni/' /tmp/aurea-candidate.html; then
               source_url="$candidate"
@@ -25,7 +25,7 @@ jobs:
             fi
           done
           if [ -z "$source_url" ]; then
-            echo "::error::Neither friendly-churos nor friendly-churros serves the complete AUREA landing. Check exact Netlify Drop URL."
+            echo "::error::The supplied Netlify Drop site is not serving the expected AUREA landing page."
             exit 1
           fi
           mkdir -p /tmp/aurea-import
