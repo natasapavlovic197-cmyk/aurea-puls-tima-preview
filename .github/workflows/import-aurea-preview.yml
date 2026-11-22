@@ -15,11 +15,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_url="https://friendly-churos.netlify.app"
+          source_url=""
+          for candidate in "https://friendly-churos.netlify.app" "https://friendly-churros.netlify.app"; do
+            echo "Checking published site $candidate"
+            if curl --fail --location --silent --show-error --max-time 20 "$candidate/" -o /tmp/aurea-candidate.html && grep -q '/zaposleni/' /tmp/aurea-candidate.html; then
+              source_url="$candidate"
+              echo "Found compatible AUREA site: $source_url"
+              break
+            fi
+          done
+          if [ -z "$source_url" ]; then
+            echo "::error::Neither friendly-churos nor friendly-churros serves the complete AUREA landing. Check exact Netlify Drop URL."
+            exit 1
+          fi
           mkdir -p /tmp/aurea-import
           for path in index.html kringle/index.html zaposleni/index.html rukovodilac/index.html portal/index.html portal/auth/index.html; do
             mkdir -p "/tmp/aurea-import/$(dirname "$path")"
-            curl --fail --location --silent --show-error --retry 3 --max-time 60 "$source_url/$path" -o "/tmp/aurea-import/$path"
+            echo "Checking $source_url/$path"
+            if ! curl --fail --location --silent --show-error --retry 2 --max-time 60 "$source_url/$path" -o "/tmp/aurea-import/$path"; then
+              echo "::error::Missing deployed page $path at $source_url"
+              exit 1
+            fi
             test "$(wc -c < "/tmp/aurea-import/$path")" -gt 200
             grep -Eiq '<html|<!doctype' "/tmp/aurea-import/$path"
           done
