@@ -98,7 +98,7 @@ function v35Render(){
      const choice=document.createElement('p');choice.className='aurea-recap-choice';choice.textContent=selectedApproach;
      const context=document.createElement('p');context.className='muted';context.textContent=selectedConsideration;
      const caution=document.createElement('p');caution.className='fine';caution.textContent='Ovaj osvrt se odnosi na Vaš izbor u izmišljenoj situaciji. Grupni rezultati ispod su ilustrativni i ne predstavljaju dokaz da je određeni pristup uspešan.';
-     recap.append(heading,choice,context,caution);el.insertBefore(recap,el.querySelector('.v35actions')||null);
+     recap.append(heading,choice,context,caution);const intro=el.querySelector('.section');if(intro&&intro.nextSibling)el.insertBefore(recap,intro.nextSibling);else el.appendChild(recap);
    }
    el.insertAdjacentHTML('beforeend','<div class="v35actions"><button type="button" class="btn" id="aureaReplay">Ponovi simulaciju</button><button type="button" class="btn primary" id="v35analyze">Odaberite sledeći korak</button><button type="button" class="btn" id="v35see">Moje aktivnosti</button></div>');
    $('aureaReplay').onclick=()=>{aureaScene=0;aureaChoice=null;aureaSelections=[null,null,null];v35Navigate('simulation')};$('v35analyze').onclick=()=>v35Navigate('guidance');if($('aureaStartPlan'))$('aureaStartPlan').onclick=()=>v35Navigate('guidance');$('v35see').onclick=()=>v35Navigate('activities');
