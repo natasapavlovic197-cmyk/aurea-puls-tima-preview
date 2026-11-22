@@ -17,7 +17,7 @@ jobs:
           set -euo pipefail
           source_url=""
           for candidate in "https://friendly-churros-22a86e.netlify.app"; do
-            echo "Checking published site $candidate"
+            echo "Checking published site $candidate after access settings update"
             if curl --fail --location --silent --show-error --max-time 20 "$candidate/" -o /tmp/aurea-candidate.html && grep -q '/zaposleni/' /tmp/aurea-candidate.html; then
               source_url="$candidate"
               echo "Found compatible AUREA site: $source_url"
