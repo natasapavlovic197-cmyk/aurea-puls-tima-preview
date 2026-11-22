@@ -1,0 +1,39 @@
+name: Import verified AUREA preview from Netlify
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/import-aurea-preview.yml'
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch complete published preview into staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_url="https://friendly-churos.netlify.app"
+          mkdir -p /tmp/aurea-import
+          for path in index.html kringle/index.html zaposleni/index.html rukovodilac/index.html portal/index.html portal/auth/index.html; do
+            mkdir -p "/tmp/aurea-import/$(dirname "$path")"
+            curl --fail --location --silent --show-error --retry 3 --max-time 60 "$source_url/$path" -o "/tmp/aurea-import/$path"
+            test "$(wc -c < "/tmp/aurea-import/$path")" -gt 200
+            grep -Eiq '<html|<!doctype' "/tmp/aurea-import/$path"
+          done
+          test "$(wc -c < /tmp/aurea-import/kringle/index.html)" -gt 2500000
+          grep -q 'Glas tima' /tmp/aurea-import/index.html
+          grep -q '/zaposleni/' /tmp/aurea-import/index.html
+          printf '/\n  X-Robots-Tag: noindex, nofollow\n' > /tmp/aurea-import/_headers
+          cp -a /tmp/aurea-import/. .
+      - name: Commit verified files to connected preview repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html kringle/index.html zaposleni/index.html rukovodilac/index.html portal/index.html portal/auth/index.html _headers
+          if ! git diff --cached --quiet; then
+            git commit -m "Import complete AUREA preview from verified Netlify deployment"
+            git push
+          fi
