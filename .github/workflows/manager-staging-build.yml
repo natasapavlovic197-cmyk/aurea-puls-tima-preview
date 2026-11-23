@@ -1,5 +1,9 @@
 name: AUREA manager staging build
 on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths:
+      - '.github/workflows/manager-staging-build.yml'
   pull_request:
     paths:
       - 'architecture/**'
