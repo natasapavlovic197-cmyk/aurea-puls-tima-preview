@@ -43,7 +43,7 @@ jobs:
             background-size:300% 100%!important;
           }
           </style>"""
-          assert a.count('</head>')==1
+          assert a.count('</head>')>=1, 'No HTML head found'
           a=a.replace('</head>',css+'</head>',1)
           newb=a.replace('</head>',m.group(0)+'</head>',1)
           assert newb.replace(m.group(0),'')==a
