@@ -43,8 +43,13 @@ const {createEmployeeEndpoint}=require('./employee-endpoint.cjs');
  await page.getByText('Vaši odgovori su primljeni.',{exact:false}).waitFor();
  assert.equal(attempts,2);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- await page.goto(base+'/employee#'+'a'.repeat(64));
- await page.getByText('Poziv nije dostupan ili je već iskorišćen.').waitFor();
+ const replay=await page.context().newPage();
+ replay.on('pageerror',e=>errors.push(e.message));
+ const denied= replay.waitForResponse(r=>r.url().endsWith('/api/employee/invitation')&&r.request().method()==='POST');
+ await replay.goto(base+'/employee#'+'a'.repeat(64));
+ assert.equal((await denied).status(),404);
+ await replay.getByText('Poziv nije dostupan ili je već iskorišćen.').waitFor();
+ await replay.close();
  assert.deepEqual(errors,[]);await page.close();
  }finally{await new Promise(r=>server.close(r));}
  }
