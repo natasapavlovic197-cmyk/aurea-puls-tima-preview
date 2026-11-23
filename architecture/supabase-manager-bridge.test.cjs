@@ -9,7 +9,7 @@ const bridge=createManagerBridge({url:'https://example-project.supabase.co',key:
  throw Error('Unexpected URL');
 }});
 (async()=>{
- assert.equal(await bridge.authenticate({headers:{authorization:'Bearer invalid'}}),null);
+ assert.equal(await bridge.authenticate({headers:{authorization:'Basic invalid'}}),null);
  assert.equal(calls.length,0);
  const user=await bridge.authenticate({headers:{authorization:'Bearer header.payload.signature'}});
  assert.equal(user.id,uid);
