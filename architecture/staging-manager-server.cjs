@@ -4,17 +4,17 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 const {createServerEntry}=require('./manager-server-entry.cjs');
 const {createHttpAdapter}=require('./manager-http-adapter.cjs');
-function createStagingServer({env,query,fetchImpl,dist=path.resolve('dist-staging-manager')}={}){
+function createStagingServer({env,query,fetchImpl,employeeHandler,dist=path.resolve('dist-staging-manager')}={}){
  const dispatch=createHttpAdapter({handler:createServerEntry({env,query,fetchImpl})});
  const assets=new Map([['/','index.html'],['/index.html','index.html'],['/manager-login.css','manager-login.css'],['/manager-login.bundle.js','manager-login.bundle.js'],['/staging-config.js','staging-config.js']]);
  return http.createServer(async(req,res)=>{
  res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');res.setHeader('referrer-policy','no-referrer');
  try{
  const url=new URL(req.url,'http://localhost');
- if(url.pathname==='/api/manager-workspace'){
+ if(url.pathname==='/api/manager-workspace'||url.pathname.startsWith('/api/employee/')){
  let body='',size=0;
  for await(const chunk of req){size+=chunk.length;if(size>16000){res.writeHead(413);res.end();return;}body+=chunk.toString();}
- const result=await dispatch({method:req.method,url:req.url,headers:req.headers,body,sourceIp:req.socket.remoteAddress});
+ const result=url.pathname.startsWith('/api/employee/')? (employeeHandler?await employeeHandler({method:req.method,path:url.pathname,body,sourceIp:req.socket.remoteAddress}):{statusCode:503,headers:{},body:'Unavailable'}):await dispatch({method:req.method,url:req.url,headers:req.headers,body,sourceIp:req.socket.remoteAddress});
  res.writeHead(result.statusCode,result.headers);res.end(result.body);return;
  }
  if(req.method!=='GET'||!assets.has(url.pathname)){res.writeHead(404);res.end();return;}
