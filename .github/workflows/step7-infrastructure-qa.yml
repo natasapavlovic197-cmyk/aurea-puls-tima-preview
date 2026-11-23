@@ -1,0 +1,19 @@
+name: AUREA step 7 infrastructure QA
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'architecture/published-*.cjs'
+      - 'architecture/weekly-cycle-planner*.cjs'
+      - '.github/workflows/step7-infrastructure-qa.yml'
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test architecture/published-manager-report.test.cjs architecture/published-report-endpoint.test.cjs architecture/weekly-cycle-planner.test.cjs
