@@ -7,6 +7,9 @@ on:
       - 'zaposleni/index.html'
       - 'index.html'
       - '.github/tests/manager-smoke.cjs'
+      - '.github/tests/portal-mock.cjs'
+      - 'portal/index.html'
+      - 'odgovor/index.html'
   workflow_dispatch:
 jobs:
   manager-smoke:
@@ -21,3 +24,5 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Test fictional manager flow on mobile
         run: node .github/tests/manager-smoke.cjs
+      - name: Test portal with synthetic API responses
+        run: node .github/tests/portal-mock.cjs
