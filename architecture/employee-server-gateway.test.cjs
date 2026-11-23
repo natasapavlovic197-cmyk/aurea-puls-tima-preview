@@ -13,6 +13,10 @@ const event=(action,body={})=>({httpMethod:'POST',headers:{'content-type':'appli
  assert.equal(JSON.parse(invitation.body).questions.length,4);
  assert.equal((await handler(event('submit',{answers}))).statusCode,200);
  assert.equal(calls,2);
+ assert.equal((await handler(event('invitation',{email:'private@example.com'}))).statusCode,400);
+ assert.equal((await handler(event('submit',{answers,employeeId:'private-id'}))).statusCode,400);
+ assert.equal((await handler(event('invitation',{answers}))).statusCode,400);
+ assert.equal(calls,2);
  assert.equal((await handler(event('submit',{answers:[answers[0],answers[0],...answers.slice(2)]}))).statusCode,400);
  assert.equal(calls,2);
  assert.equal((await createEmployeeGateway({adapter})(event('invitation'))).statusCode,503);
