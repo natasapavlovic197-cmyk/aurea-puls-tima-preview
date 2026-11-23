@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {createEmployeeRpcGateway} from './employee-rpc-gateway.mjs';
 const hash='a'.repeat(64);
-const answers=['J1','K1','O1','P1'].map(code=>({code,rating:5,private:'never-send'}));
+const answers=['J1','K1','O1','P1'].map(code=>({code,rating:5}));
 const event=(action,extra={})=>({httpMethod:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,hash,...extra})});
 const calls=[];
 const client={async rpc(name,args){
@@ -15,6 +15,7 @@ const invitation=await h(event('invitation'));
 assert.equal(invitation.statusCode,200);
 assert.equal(invitation.body.includes('PRIVATE'),false);
 assert.deepEqual(JSON.parse(invitation.body).questions.map(x=>x.code),['J1','K1','O1','P1']);
+assert.equal((await h(event('submit',{answers:answers.map(a=>({...a,private:'never-send'}))}))).statusCode,400);
 const submitted=await h(event('submit',{answers}));
 assert.equal(submitted.statusCode,200);
 assert.deepEqual(JSON.parse(submitted.body),{status:'submitted'});
