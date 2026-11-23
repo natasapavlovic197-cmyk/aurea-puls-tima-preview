@@ -15,9 +15,9 @@ function pool({login='aurea_limiter_login',role='aurea_rate_limiter',bypass=fals
   const p=pool(opts);await assert.rejects(()=>createRestrictedLimiterQuery({pool:p})(SQL,params),/Untrusted/);
   assert.ok(p.calls.includes('ROLLBACK'));assert.ok(!p.calls.includes(SQL));assert.deepEqual(p.releases,[true]);
  }
- const down=pool({failAt:SQL});await assert.rejects(()=>createRestrictedLimiterQuery({pool:down})(SQL,params),/DB offline/);
+ for(const step of ['BEGIN','SET LOCAL ROLE aurea_rate_limiter','COMMIT']){\n  const broken=pool({failAt:step});await assert.rejects(()=>createRestrictedLimiterQuery({pool:broken})(SQL,params),/DB offline/);\n  assert.ok(broken.calls.includes('ROLLBACK'));assert.deepEqual(broken.releases,[true]);\n }\n const down=pool({failAt:SQL});await assert.rejects(()=>createRestrictedLimiterQuery({pool:down})(SQL,params),/DB offline/);
  assert.ok(down.calls.includes('ROLLBACK'));assert.deepEqual(down.releases,[true]);
- const blocked=pool();await assert.rejects(()=>createRestrictedLimiterQuery({pool:blocked})('select * from auth.users',params),/Unapproved/);assert.equal(blocked.calls.length,0);
+ const noConnection={async connect(){throw Error('Connection refused')}};\n await assert.rejects(()=>createRestrictedLimiterQuery({pool:noConnection})(SQL,params),/Connection refused/);\n const blocked=pool();await assert.rejects(()=>createRestrictedLimiterQuery({pool:blocked})('select * from auth.users',params),/Unapproved/);assert.equal(blocked.calls.length,0);
  assert.throws(()=>createRestrictedLimiterQuery(),TypeError);
  console.log('PASS: transaction-local role, both identities, allowlist, rollback and discard on failure');
 })().catch(e=>{console.error(e);process.exitCode=1});
