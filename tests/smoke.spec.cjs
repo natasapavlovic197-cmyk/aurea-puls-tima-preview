@@ -1,8 +1,6 @@
 const { test, expect } = require('@playwright/test');
-const path = require('path');
-const { pathToFileURL } = require('url');
-const root = path.resolve(__dirname, '..');
-const pageUrl = file => pathToFileURL(path.join(root, file)).href;
+// Use HTTP rather than file:// so ../ navigation resolves like Netlify.
+const pageUrl = file => 'http://127.0.0.1:8765/' + file;
 
 test('employee pulse is legible and completes four answers plus optional prompt', async ({ page }) => {
   await page.goto(pageUrl('zaposleni/index.html'));
