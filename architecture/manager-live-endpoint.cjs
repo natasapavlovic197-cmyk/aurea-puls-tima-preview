@@ -17,7 +17,11 @@ function createManagerEndpoint({bridge,limit}={}){
    const user=await bridge.authenticate(event);
    if(!user?.id||!user?.token)return response(401,{status:'unauthorized'});
    const rows=await bridge.readSummary({token:user.token,organizationId:org});
-   if(!Array.isArray(rows)||!rows.every(x=>typeof x.week==='string'&&typeof x.domain==='string'&&typeof x.question==='string'&&Number.isFinite(x.favorablePercent)&&x.favorablePercent>=0&&x.favorablePercent<=100))return response(503,{status:'unavailable'});
+   if(!Array.isArray(rows)||rows.length>200||!rows.every(x=>x&&typeof x.week==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x.week)&&typeof x.domain==='string'&&x.domain.length>0&&x.domain.length<=80&&typeof x.question==='string'&&x.question.length>0&&x.question.length<=80&&Number.isFinite(x.favorablePercent)&&x.favorablePercent>=0&&x.favorablePercent<=100))return response(503,{status:'unavailable'});
+   // Duplicate domain/question/week rows indicate a malformed publication.
+   // Reject rather than displaying a misleading manager report.
+   const keys=rows.map(x=>JSON.stringify([x.week,x.domain,x.question]));
+   if(new Set(keys).size!==keys.length)return response(503,{status:'unavailable'});
    return response(200,{status:'ready',report:rows.map(({week,domain,question,favorablePercent})=>({week,domain,question,favorablePercent}))});
   }catch{return response(403,{status:'unavailable'})}
  };
