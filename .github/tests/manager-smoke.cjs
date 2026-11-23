@@ -27,6 +27,7 @@ const fs = require('fs');
    await page.locator('#aureaSimNext').click();
   }
   await assert(await page.locator('.aurea-decision-recap').isVisible(),'decision recap');
+  await page.waitForTimeout(1400); // Let entry animations finish before visual capture
   await page.screenshot({path:'test-artifacts/manager-overview-mobile.png',fullPage:true});
   await assert(await page.locator('.metric').count()===5,'five aggregate metrics');
   await page.locator('#v35guidance').click();
@@ -44,6 +45,7 @@ const fs = require('fs');
   await page.locator('#due').fill('2026-12-10');
   await page.locator('#saveAction').click();
   await assert(await page.locator('.aurea-finale').isVisible(),'completion');
+  await page.waitForTimeout(1400); // Let entry animations finish before visual capture
   await page.screenshot({path:'test-artifacts/manager-completion-mobile.png',fullPage:true});
   await assert((await page.locator('#aureaFinalObservation').innerText()).includes('prekida'),'observation persisted');
   await page.locator('#v35finishEdit').click();
@@ -58,6 +60,7 @@ const fs = require('fs');
   await assert(await page.locator('a[href="/portal/"]').count()===1,'landing links to secure portal');
   await page.goto(pathToFileURL(path.resolve('zaposleni/index.html')).href);
   await assert(await page.locator('#next').isDisabled(),'employee cannot continue unanswered');
+  await page.waitForTimeout(1400); // Let entry animations finish before visual capture
   await page.screenshot({path:'test-artifacts/employee-mobile.png',fullPage:true});
   for(let i=0;i<4;i++){
    await page.locator('input[name="answer"][value="4"]').check();
