@@ -6,6 +6,7 @@ on:
       - 'rukovodilac/**'
       - 'locked/**'
       - 'v4-demo/**'
+      - 'portal/**'
       - '.github/workflows/b2b-privacy-checks.yml'
   workflow_dispatch:
 jobs:
@@ -22,3 +23,4 @@ jobs:
       - run: node architecture/report-release.test.cjs
       - run: node architecture/manager-rpc-adapter.test.mjs
       - run: node architecture/master-lock.test.cjs
+      - run: node architecture/portal-security.test.cjs
