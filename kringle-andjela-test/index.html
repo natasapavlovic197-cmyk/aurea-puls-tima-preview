@@ -3302,6 +3302,30 @@ function setPortraitPose(pose, immediate = false) {
   // V13: same two-layer, eased transition as Marko, Sara, Luka and Filip.
   // Each pose uses its own independent sprite layer, avoiding instant frame jumps.
   delete portrait.dataset.emotion;
+  // AUREA QA-only correction: Anđela uses one real photographic frame at a time.
+  // Never blend two faces or modify the behavior of Marko, Sara, Luka, Filip or Maja.
+  if (speaker === 'andjela') {
+    const old = stage.lastElementChild;
+    if (old && old.classList.contains(speakerClass) && old.dataset.pose === pose && stage.children.length === 1) {
+      old.dataset.emotion = emotion;
+      portrait.dataset.emotion = emotion;
+      return;
+    }
+    const single = get('portrait-shot').content.firstElementChild.cloneNode(true);
+    single.classList.add(speakerClass);
+    single.dataset.pose = pose;
+    single.dataset.emotion = emotion;
+    portrait.dataset.emotion = emotion;
+    for (const previous of stage.querySelectorAll('.portrait-shot')) {
+      previous.getAnimations().forEach(a => a.cancel());
+    }
+    stage.replaceChildren(single);
+    if (!immediate && !reducedMotion.matches && single.animate) {
+      // A short finish fade on the NEW full frame; no double exposure.
+      single.animate([{opacity:0.94},{opacity:1}], {duration:180,easing:'ease-out'});
+    }
+    return;
+  }
   // Never switch sprite position on an already visible layer: that produces a hard jump.
   // Instead keep the old frame beneath a new, independently rendered frame.
   if (current && current.classList.contains(speakerClass) &&
@@ -4274,7 +4298,21 @@ if (new URLSearchParams(location.search).has('andjela-test')) {
     btn.textContent = 'Proveri Anđeline izraze';
     btn.style.cssText='position:fixed;bottom:16px;right:16px;z-index:9999;padding:12px 16px;border-radius:12px;background:#641d31;color:white;border:1px solid #d6b78b;font:600 14px sans-serif';
     let index = 0; const names = ['attentive','concerned','skeptical','surprised','relieved','reflecting'];
-    btn.onclick=()=>{const p=document.getElementById('exercise-portrait');if(!p || p.dataset.speaker!=='andjela'){document.getElementById('demo-andjela')?.click();setTimeout(()=>btn.click(),300);return;}const shot=p.querySelector('.portrait-stage .portrait-shot');if(shot){shot.dataset.emotion=names[index%names.length];btn.textContent='Anđela: '+names[index%names.length]+' (sledeći izraz)';index++;}};
+    btn.onclick=()=>{
+      const p=document.getElementById('exercise-portrait');
+      if(!p || p.dataset.speaker!=='andjela'){
+        document.getElementById('demo-andjela')?.click();
+        setTimeout(()=>btn.click(),300);
+        return;
+      }
+      const name=names[index%names.length];
+      const mapped={attentive:'listening',concerned:'speaking',skeptical:'reflecting',surprised:'speaking',relieved:'listening',reflecting:'reflecting'};
+      setPortraitPose(mapped[name],true);
+      const shot=p.querySelector('.portrait-stage .portrait-shot:last-child');
+      if(shot){shot.dataset.emotion=name;p.dataset.emotion=name;}
+      btn.textContent='Anđela: '+name+' (sledeći izraz)';
+      index++;
+    };
     document.body.appendChild(btn);
   });
 }
