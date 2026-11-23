@@ -23,8 +23,21 @@ try{
   // Inspect available entry controls without changing app state or approved design.
   const entry=await page.locator('button, a, [role="button"]').evaluateAll(nodes=>nodes.filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0}).slice(0,25).map(n=>({tag:n.tagName,text:(n.textContent||'').trim().slice(0,90),href:n.getAttribute('href')})));
   console.log(JSON.stringify({name,visibleEntryControls:entry}));
-  // The portrait may appear only after entering the exercise; don't mistake
-  // an initially hidden portrait for a failed animation.
+  // Enter the actual demonstration and record the first interactive state.
+  await page.getByRole('button',{name:'Pokrenite demonstraciju'}).click({timeout:10000});
+  await page.waitForTimeout(900);
+  const afterEntry=await page.evaluate(()=>{
+    const node=document.querySelector('.portrait-andjela');
+    const frame=node?.querySelector('.portrait-frame');
+    const r=node?.getBoundingClientRect();
+    const style=frame?getComputedStyle(frame):null;
+    return {portraitPresent:!!node,portraitVisible:!!r&&r.width>0&&r.height>0,framePresent:!!frame,backgroundPosition:style?.backgroundPosition||null,backgroundSize:style?.backgroundSize||null,visibleButtons:[...document.querySelectorAll('button')].filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0}).slice(0,20).map(n=>(n.textContent||'').trim().slice(0,80))};
+  });
+  console.log(JSON.stringify({name,afterEntry,pageErrors:errors.slice(0,8)}));
+  await page.screenshot({path:resolve(out,name+'-after-entry.png'),fullPage:false,timeout:30000});
+  if(errors.length)throw Error(name+' has browser JavaScript errors after entering demo: '+errors.length);
+  // The character may be introduced later in the scenario; don't claim facial
+  // animation is validated just because the demonstration entry works.
   await page.close();
  }
 }finally{await browser.close();}
