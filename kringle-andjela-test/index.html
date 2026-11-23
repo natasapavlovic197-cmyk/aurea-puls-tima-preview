@@ -1853,27 +1853,46 @@ h1,h2,h3,.wp-title,.ap-top h2,.dash-banner h1{font-family:'Libre Baskerville',Ge
 @media(prefers-reduced-motion:reduce){#pulse-manager-flow .signature-questions fieldset{animation:none}}
 </style>
 <style id="aurea-andjela-no-hologram-test">
-/* AUREA isolated comparison: no simultaneous translucent face images. */
-#exercise-portrait .portrait-shot.portrait-andjela > .portrait-frame {
-  animation:none!important;
-  transition:transform 240ms ease-out, filter 240ms ease-out!important;
-  background-size:300% 100%!important;
-  opacity:1!important;
-  will-change:auto!important;
+/* Isolated QA only: use the original, unretouched three-pose sprite. */
+#exercise-portrait.exercise-portrait[data-speaker="andjela"]{
+  aspect-ratio:4/5!important;height:auto!important;min-height:0!important;overflow:hidden!important;
 }
-#exercise-portrait .portrait-shot.portrait-andjela .portrait-face,
-#exercise-portrait .portrait-shot.portrait-andjela .face-layer {
+/* During the existing crossfade, never show two photographic faces at once. */
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-stage>.portrait-shot.portrait-andjela:not(:last-child){
   display:none!important;
 }
-#exercise-portrait .portrait-shot.portrait-andjela::before,
-#exercise-portrait .portrait-shot.portrait-andjela::after {
-  animation:none!important;
-  opacity:0!important;
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-stage>.portrait-shot.portrait-andjela{
+  opacity:1!important;
 }
-@media (prefers-reduced-motion: reduce) {
-  #exercise-portrait .portrait-shot.portrait-andjela > .portrait-frame {
-    transition:none!important;
-  }
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela>.portrait-frame{
+  background-size:300% 100%!important;background-position:0% 0%!important;
+  opacity:1!important;animation:none!important;will-change:auto!important;
+  transition:transform 240ms ease-out,filter 240ms ease-out!important;
+}
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela[data-pose="speaking"]>.portrait-frame{
+  background-size:300% 100%!important;background-position:50% 0%!important;
+}
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela[data-pose="reflecting"]>.portrait-frame{
+  background-size:300% 100%!important;background-position:100% 0%!important;
+}
+/* The six semantic test states intentionally use three real photographic faces. */
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela:is([data-emotion="attentive"],[data-emotion="relieved"])>.portrait-frame{
+  background-size:300% 100%!important;background-position:0% 0%!important;
+}
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela:is([data-emotion="concerned"],[data-emotion="surprised"])>.portrait-frame{
+  background-size:300% 100%!important;background-position:50% 0%!important;
+}
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela:is([data-emotion="skeptical"],[data-emotion="reflecting"])>.portrait-frame{
+  background-size:300% 100%!important;background-position:100% 0%!important;
+}
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela .portrait-face,
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela .face-layer{
+  display:none!important;
+}
+@media(prefers-reduced-motion:reduce){
+ #exercise-portrait.exercise-portrait[data-speaker="andjela"] .portrait-shot.portrait-andjela>.portrait-frame{
+  transition:none!important;animation:none!important;
+ }
 }
 </style></head>
 <body>
