@@ -1,10 +1,40 @@
 'use strict';
-const {randomUUID}=require('node:crypto');
+const {randomUUID,createHash,timingSafeEqual}=require('node:crypto');
+const {normalizePublications}=require('./publication-row-adapter.cjs');
 // This adapter requires a dedicated database login with narrowly scoped EXECUTE
-// permissions on the two private SQL functions. Never use an employee or manager pool.
-function createWeeklyDeliveryStore({pool}={}){
+// permissions on private delivery functions. Never use an employee or manager pool.
+function createWeeklyDeliveryStore({pool,resolveInvitationToken}={}){
  if(typeof pool?.query!=='function')throw new TypeError('Dedicated PostgreSQL pool required');
  return {
+  async loadScopedRecipients(job){
+   const args=fullScope(job);
+   const r=await pool.query('select aurea_private.delivery_snapshot($1::bigint,$2::uuid,$3::uuid,$4::date,$5::text) as snapshot',args);
+   const s=r?.rows?.length===1?r.rows[0].snapshot:null;
+   if(!s||typeof s.cycleClosed!=='boolean'||!Array.isArray(s.recipients)||s.recipients.length>10000||s.cycleClosed!==(job.action==='report'))throw Error('Invalid delivery snapshot');
+   const recipients=[];
+   for(const row of s.recipients){
+    if(!isUuid(row?.id)||typeof row.email!=='string')throw Error('Invalid recipient source');
+    const base={id:row.id,email:row.email,organizationId:job.organizationId,weekStart:job.weekStart};
+    if(job.action==='report'){
+     if(!['owner','manager'].includes(row.role)||row.active!==true)throw Error('Invalid manager recipient');
+     recipients.push({...base,role:row.role,active:true});continue;
+    }
+    if(typeof resolveInvitationToken!=='function'||!validKey(row.tokenHash))throw Error('Invitation token source unavailable');
+    const token=await resolveInvitationToken({organizationId:job.organizationId,weekStart:job.weekStart,invitationId:row.id});
+    if(!validKey(token)||!timingSafeEqual(Buffer.from(row.tokenHash,'hex'),createHash('sha256').update(token).digest()))throw Error('Invitation token verification failed');
+    recipients.push({...base,token,expiresAt:row.expiresAt,sentAt:row.sentAt,reminderAt:row.reminderAt,redeemedAt:row.redeemedAt});
+   }
+   return {cycleClosed:s.cycleClosed,recipients};
+  },
+  async loadPublications(job){
+   const args=fullScope(job);
+   if(job.action!=='report')throw Error('Invalid report action');
+   const r=await pool.query('select * from aurea_private.delivery_publications($1::bigint,$2::uuid,$3::uuid,$4::date)',args.slice(0,4));
+   return normalizePublications(r?.rows).map(row=>{
+    if(row.weekStart>job.weekStart)throw Error('Future publication');
+    return {...row,organizationId:job.organizationId};
+   });
+  },
   async reserve({job,recipientId,key}){
    const [id,token]=scope(job);
    if(!isUuid(recipientId)||!validKey(key))throw TypeError('Invalid recipient reservation');
@@ -59,6 +89,13 @@ function scope(job){
  const id=job?.jobId,token=job?.leaseToken;
  if(!Number.isSafeInteger(id)||id<1||!isUuid(token))throw TypeError('Invalid job lease');
  return [id,token];
+}
+function fullScope(job){
+ const [id,token]=scope(job);
+ if(!isUuid(job.organizationId)||!['invite','reminder','report'].includes(job.action)||typeof job.weekStart!=='string')throw TypeError('Invalid delivery scope');
+ const d=new Date(job.weekStart+'T12:00:00Z');
+ if(!Number.isFinite(+d)||d.toISOString().slice(0,10)!==job.weekStart||d.getUTCDay()!==1)throw TypeError('Invalid delivery week');
+ return [id,token,job.organizationId,job.weekStart,job.action];
 }
 function validKey(key){return typeof key==='string'&&/^[a-f0-9]{64}$/.test(key)}
 function isUuid(v){return typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)}
