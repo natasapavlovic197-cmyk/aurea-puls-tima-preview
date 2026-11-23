@@ -1,10 +1,12 @@
 const { chromium } = require('playwright');
 const { pathToFileURL } = require('url');
 const path = require('path');
+const fs = require('fs');
 (async()=>{
  const browser=await chromium.launch({headless:true});
  const page=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:3,isMobile:true,hasTouch:true});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ fs.mkdirSync('test-artifacts',{recursive:true});
  const assert=async(ok,msg)=>{if(!ok)throw Error(msg);console.log('PASS '+msg)};
  try{
   await page.goto(pathToFileURL(path.resolve('rukovodilac/index.html')).href);
@@ -25,6 +27,7 @@ const path = require('path');
    await page.locator('#aureaSimNext').click();
   }
   await assert(await page.locator('.aurea-decision-recap').isVisible(),'decision recap');
+  await page.screenshot({path:'test-artifacts/manager-overview-mobile.png',fullPage:true});
   await assert(await page.locator('.metric').count()===5,'five aggregate metrics');
   await page.locator('#v35guidance').click();
   await assert(await page.locator('#nextManager').count()===1,'one next button');
@@ -41,6 +44,7 @@ const path = require('path');
   await page.locator('#due').fill('2026-12-10');
   await page.locator('#saveAction').click();
   await assert(await page.locator('.aurea-finale').isVisible(),'completion');
+  await page.screenshot({path:'test-artifacts/manager-completion-mobile.png',fullPage:true});
   await assert((await page.locator('#aureaFinalObservation').innerText()).includes('prekida'),'observation persisted');
   await page.locator('#v35finishEdit').click();
   await assert((await page.locator('#actionText').inputValue()).includes('Proveriti raspodelu'),'edit preserves activity');
@@ -54,6 +58,7 @@ const path = require('path');
   await assert(await page.locator('a[href="/portal/"]').count()===1,'landing links to secure portal');
   await page.goto(pathToFileURL(path.resolve('zaposleni/index.html')).href);
   await assert(await page.locator('#next').isDisabled(),'employee cannot continue unanswered');
+  await page.screenshot({path:'test-artifacts/employee-mobile.png',fullPage:true});
   for(let i=0;i<4;i++){
    await page.locator('input[name="answer"][value="4"]').check();
    await assert(await page.locator('#next').isEnabled(),'employee answer '+(i+1)+' enables next');
