@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');
+const {canPublishAggregate,safeDomainAverage}=require('./privacy-guard.cjs');
+assert.equal(canPublishAggregate({respondentCount:4,teamSize:8}),false);
+assert.equal(canPublishAggregate({respondentCount:5,teamSize:8}),true);
+assert.equal(canPublishAggregate({respondentCount:9,teamSize:8}),false);
+assert.equal(canPublishAggregate({respondentCount:6,teamSize:8,previousRespondentCount:5,previousCountPublic:true}),false);
+assert.equal(canPublishAggregate({respondentCount:7,teamSize:9,previousRespondentCount:5,previousCountPublic:true}),true);
+assert.equal(safeDomainAverage({respondentCount:4,teamSize:8,answers:[5,5,5,5]}),null);
+assert.equal(safeDomainAverage({respondentCount:5,teamSize:8,answers:[1,2,3,4,5]}),3);
+assert.equal(safeDomainAverage({respondentCount:5,teamSize:8,answers:[1,2,3,4,6]}),null);
+console.log('PASS: preliminary aggregate suppression tests');
