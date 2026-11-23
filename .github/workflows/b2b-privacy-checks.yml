@@ -30,6 +30,7 @@ jobs:
       - run: node architecture/netlify-entrypoints.test.cjs
       - run: node architecture/postgres-durable-limiter.test.cjs
       - run: node architecture/employee-durable-rate-limit.test.cjs
+      - run: node architecture/staging-employee-service.test.cjs
       - run: node architecture/manager-live-endpoint.test.cjs
       - run: node architecture/two-tenant-http-rehearsal.test.cjs
       - run: node architecture/manager-privacy-threshold.test.cjs
