@@ -17,5 +17,12 @@ const job={id:7,leaseToken:'a'.repeat(32),organizationId:'org-1',weekStart:'2026
  const invalid=createWeeklyDeliveryWorker({store:{...store,claim:async()=>({...job,leaseToken:'short'})},sender,enabled:true});
  await assert.rejects(()=>invalid(),/Invalid leased job/);
  assert.throws(()=>createWeeklyDeliveryWorker({store}),TypeError);
+ for(const action of ['reminder','report']){
+ const candidate={...job,action};
+ const run=createWeeklyDeliveryWorker({enabled:true,store:{...store,claim:async()=>candidate},sender:{send:async payload=>{assert.equal(payload.action,action);assert.equal(payload.idempotencyKey,'org-1:2026-11-23:'+action);return {accepted:true};}}});
+ assert.deepEqual(await run(),{status:'delivered',jobId:7});
+ }
+ const unconfirmed=createWeeklyDeliveryWorker({enabled:true,store:{...store,complete:async()=>false},sender});
+ assert.deepEqual(await unconfirmed(),{status:'failed',jobId:7});
  console.log('PASS: weekly delivery worker gated, leased, idempotency-keyed and fail-closed');
 })().catch(e=>{console.error(e);process.exitCode=1});
