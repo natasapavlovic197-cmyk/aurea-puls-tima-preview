@@ -22,3 +22,8 @@ The two mobile browser QA workflows are green for the *static demo*. They do not
 
 ## Credit policy
 No Netlify deployment, TinyFish run, paid resource provisioning, secret mutation, or billing change is authorized by this checklist.
+
+## Read-only RLS policy verification (2026-11-23)
+- The staging `pg_policies` catalog shows `aurea_rate_limit_server_only` on `aurea_private.api_rate_limits`, scoped to role `aurea_rate_limiter`, command `ALL`, with `USING (true)` and `WITH CHECK (true)`.
+- Combined with the previously verified schema/table grants, this indicates that the **role's own** limiter upsert is permitted by policy once a valid SQL session runs as that role. This is **not a live transaction test** and does **not** resolve the role's `NOLOGIN` status.
+- No grants, policies, roles, or secrets were changed during verification.
