@@ -13,6 +13,15 @@ const path = require('path');
    await assert((await page.locator('.aurea-sim-top').innerText()).includes((i+1)+' / 3'),'scene '+(i+1)+' visible');
    await page.locator('[data-choice="0"]').click();
    await assert(await page.locator('.aurea-sim-feedback').isVisible(),'feedback '+(i+1));
+   if(i===1){
+    await page.locator('#aureaSimBack').click();
+    await assert((await page.locator('.aurea-sim-top').innerText()).includes('1 / 3'),'back to first scene');
+    await assert(await page.locator('[data-choice="0"]').getAttribute('aria-pressed')==='true','previous choice retained');
+    await page.locator('[data-choice="1"]').click();
+    await page.locator('#aureaSimNext').click();
+    await assert((await page.locator('.aurea-sim-top').innerText()).includes('2 / 3'),'forward after changed choice');
+    await assert(await page.locator('[data-choice="0"]').getAttribute('aria-pressed')==='true','second scene choice retained');
+   }
    await page.locator('#aureaSimNext').click();
   }
   await assert(await page.locator('.aurea-decision-recap').isVisible(),'decision recap');
@@ -25,6 +34,9 @@ const path = require('path');
   await page.locator('#observation').selectOption('Prekidi rada');
   await page.locator('#nextManager').click();
   await assert(await page.locator('#actionText').isVisible(),'activity step');
+  await page.locator('#backManager').click();
+  await assert(await page.locator('#observation').inputValue()==='Prekidi rada','observation preserved on back');
+  await page.locator('#nextManager').click();
   await page.locator('#actionText').fill('Proveriti raspodelu zadataka na sastanku');
   await page.locator('#due').fill('2026-12-10');
   await page.locator('#saveAction').click();
