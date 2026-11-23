@@ -6,6 +6,7 @@ on:
       - 'architecture/manager-ten-domain-view.cjs'
       - 'architecture/manager-ten-domain-view.test.cjs'
       - 'architecture/manager-design-regression.test.cjs'
+      - 'architecture/manager-step5-browser-qa.cjs'
       - 'rukovodilac/index.html'
       - 'zaposleni/index.html'
       - 'architecture/item-aware-trends.cjs'
@@ -22,3 +23,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --test architecture/manager-ten-domain-view.test.cjs architecture/manager-design-regression.test.cjs
+      - run: |
+          npm install --no-save --no-package-lock playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - run: node architecture/manager-step5-browser-qa.cjs
