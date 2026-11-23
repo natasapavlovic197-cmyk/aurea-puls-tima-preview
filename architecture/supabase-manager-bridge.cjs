@@ -28,6 +28,12 @@ function createManagerBridge({url,key,fetchImpl=globalThis.fetch}={}){
    return {week:row.week_start,domain:row.domain,question:row.question_code,favorablePercent:Number(percent)};
   });
  }
- return Object.freeze({authenticate,readSummary});
+ async function readAuthorizedPublications({token,organizationId}){
+  if(!UUID.test(organizationId)||typeof token!=='string'||!token)throw new TypeError('Invalid publication request');
+  const r=await fetchImpl(url+'/rest/v1/rpc/aurea_manager_publications_v2',{method:'POST',headers:headers(token),body:JSON.stringify({p_organization_id:organizationId}),signal:AbortSignal.timeout(7000)});
+  if(!r.ok)throw new Error('Publication denied');
+  return require('./publication-row-adapter.cjs').normalizePublications(await r.json());
+ }
+ return Object.freeze({authenticate,readSummary,readAuthorizedPublications});
 }
 module.exports={createManagerBridge};
