@@ -2,10 +2,10 @@
 const assert=require('node:assert/strict');
 const {createHandler}=require('../netlify/functions/aurea-manager-summary.cjs');
 const org='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const base={AUREA_B2B_MANAGER_ENABLED:'true',AUREA_B2B_MANAGER_DEPLOY_APPROVED:'true',AUREA_STAGING_DATABASE_HOST:'db.example.supabase.com',AUREA_STAGING_DATABASE_NAME:'postgres',AUREA_STAGING_DATABASE_USER:'aurea_rate_limiter',AUREA_STAGING_DATABASE_PASSWORD:'p'.repeat(40),AUREA_LIMITER_SECRET:'s'.repeat(64),AUREA_SUPABASE_URL:'https://example.supabase.co',AUREA_SUPABASE_PUBLISHABLE_KEY:'test-publishable'};
+const base={AUREA_B2B_MANAGER_ENABLED:'true',AUREA_B2B_MANAGER_DEPLOY_APPROVED:'true',AUREA_STAGING_DATABASE_HOST:'db.example.supabase.com',AUREA_STAGING_DATABASE_NAME:'postgres',AUREA_STAGING_DATABASE_USER:'aurea_limiter_login',AUREA_STAGING_DATABASE_PASSWORD:'p'.repeat(40),AUREA_LIMITER_SECRET:'s'.repeat(64),AUREA_SUPABASE_URL:'https://example.supabase.co',AUREA_SUPABASE_PUBLISHABLE_KEY:'test-publishable'};
 const event={httpMethod:'GET',queryStringParameters:{organization_id:org},requestContext:{identity:{sourceIp:'192.0.2.8'}},headers:{authorization:'Bearer a.b.c'}};
 let calls=0,fetches=0;
-class Pool{async connect(){return {async query(sql){if(sql.includes('current_user as current_user'))return {rows:[{current_user:'aurea_rate_limiter',bypassrls:false}]};return {rows:[{hits:1}]}},release(){}}}async end(){}}
+class Pool{async connect(){return {async query(sql){if(sql.includes('session_user as login_user'))return {rows:[{login_user:'aurea_limiter_login',active_user:'aurea_rate_limiter',bypassrls:false}]};return {rows:[{hits:1}]}},release(){}}}async end(){}}
 const fetchImpl=async(url)=>{fetches++;if(url.endsWith('/auth/v1/user'))return {ok:true,json:async()=>({id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'})};return {ok:true,json:async()=>[{week_start:'2026-11-23',domain:'clarity',question_code:'Q1',response_count:6,favorable_percent:75}]}};
 (async()=>{
  for(const changes of [{AUREA_B2B_MANAGER_ENABLED:'false'},{AUREA_B2B_MANAGER_DEPLOY_APPROVED:'false'},{AUREA_STAGING_DATABASE_PASSWORD:''}]){
