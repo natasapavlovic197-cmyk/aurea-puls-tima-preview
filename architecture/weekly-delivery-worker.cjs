@@ -13,7 +13,7 @@ function createWeeklyDeliveryWorker({store,sender,enabled=false,clock=()=>new Da
      !ACTIONS.has(job.action)||typeof job.organizationId!=='string'||typeof job.weekStart!=='string')
    throw Error('Invalid leased job');
   try{
-   const result=await sender.send({jobId:job.id,organizationId:job.organizationId,weekStart:job.weekStart,action:job.action,idempotencyKey:job.organizationId+':'+job.weekStart+':'+job.action});
+   const result=await sender.send({jobId:job.id,leaseToken:job.leaseToken,organizationId:job.organizationId,weekStart:job.weekStart,action:job.action,idempotencyKey:job.organizationId+':'+job.weekStart+':'+job.action});
    if(result?.accepted!==true)throw Error('Delivery not accepted');
    if(await store.complete(job.id,job.leaseToken,clock())!==true)throw Error('Delivery acknowledgment failed');
    return {status:'delivered',jobId:job.id};
