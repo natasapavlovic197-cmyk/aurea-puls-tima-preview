@@ -1,0 +1,97 @@
+name: AUREA Netlify read-only API check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: aurea-netlify-readonly-api-check
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    name: Verify environment policy and Netlify API access
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: aurea-staging-admin
+    steps:
+      - name: Verify GitHub environment branch policy and reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_BRANCH: integration/employee-ten-domains-step5
+          EXPECTED_REVIEWER: natasapavlovic197-cmyk
+        shell: bash
+        run: |
+          set -euo pipefail
+          environment_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/aurea-staging-admin")"
+          jq -e --arg reviewer "$EXPECTED_REVIEWER" '
+            any(.protection_rules[]?;
+              .type == "required_reviewers"
+              and any(.reviewers[]?; .reviewer.login == $reviewer)
+            )
+          ' <<< "$environment_json" >/dev/null
+
+          jq -e '
+            .deployment_branch_policy.custom_branch_policies == true
+            and .deployment_branch_policy.protected_branches == false
+          ' <<< "$environment_json" >/dev/null
+
+          policies_json="$(gh api "repos/${GITHUB_REPOSITORY}/environments/aurea-staging-admin/deployment-branch-policies?per_page=100")"
+          jq -e --arg branch "$EXPECTED_BRANCH" '
+            .total_count == 1
+            and (.branch_policies | length == 1)
+            and (.branch_policies[0].name == $branch)
+          ' <<< "$policies_json" >/dev/null
+
+          echo "PASS: required reviewer is configured."
+          echo "PASS: the only permitted deployment branch is $EXPECTED_BRANCH."
+          echo "INFO: wait timer and self-review settings are reported below."
+          jq -c '[
+            .protection_rules[]?
+            | if .type == "required_reviewers"
+              then {type, prevent_self_review}
+              elif .type == "wait_timer"
+              then {type, wait_timer}
+              else {type}
+              end
+          ]' <<< "$environment_json"
+
+      - name: Verify Netlify API authorization with read-only GET
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
+            echo "::error::Missing environment secret NETLIFY_AUTH_TOKEN."
+            exit 1
+          fi
+          if [ -z "${NETLIFY_SITE_ID:-}" ]; then
+            echo "::error::Missing environment variable NETLIFY_SITE_ID."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          status="$(curl --silent --show-error --max-time 30 \
+            --request GET \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
+            --header "Accept: application/json" \
+            "https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_ID}")"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Netlify read-only site lookup returned HTTP $status."
+            exit 1
+          fi
+
+          jq -e --arg site_id "$NETLIFY_SITE_ID" '.id == $site_id' "$response_file" >/dev/null
+          echo "PASS: Netlify API returned HTTP 200 for the configured site."
+          jq '{id, name, url, ssl_url, custom_domain, repo_url, build_settings: {repo_branch: .build_settings.repo_branch}}' "$response_file"
