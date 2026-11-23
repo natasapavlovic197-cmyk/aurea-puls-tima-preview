@@ -1,0 +1,9 @@
+.aurea-login{--wine:#40171f;--ivory:#fbf8f4;--gold:#b99a68;background:var(--ivory);color:var(--wine);font-family:Georgia,serif;max-width:70rem;margin:3rem auto;padding:clamp(1rem,4vw,3rem);box-sizing:border-box;border:1px solid var(--gold);border-radius:12px}
+.aurea-login h1{font-weight:400;letter-spacing:.025em}
+.aurea-login form:not([hidden]){display:grid;gap:1rem;max-width:28rem}
+.aurea-login input,.aurea-login textarea,.aurea-login select,.aurea-login button{font:inherit;padding:.85rem;border:1px solid var(--gold);border-radius:6px;box-sizing:border-box;max-width:100%}
+.aurea-login button{background:var(--wine);color:var(--ivory);cursor:pointer;margin:.25rem}
+.aurea-login button:disabled{opacity:.6;cursor:wait}
+.aurea-login :focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+.aurea-login .five{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:1rem}
+.aurea-login .metric,.aurea-login .panel{padding:1rem;border:1px solid var(--gold);border-radius:8px;overflow-wrap:anywhere}
