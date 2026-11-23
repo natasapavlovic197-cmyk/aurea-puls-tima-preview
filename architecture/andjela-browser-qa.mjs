@@ -2,11 +2,15 @@ import {chromium} from 'playwright';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 const dir=resolve('artifacts/andjela-qa');
 await mkdir(dir,{recursive:true});
 const emotions=['attentive','concerned','skeptical','surprised','relieved','reflecting'];
 const expectedPose=['listening','speaking','reflecting','speaking','listening','reflecting'];
 let failures=0;
+for(const file of ['architecture/andjela-isolation.test.cjs','architecture/master-lock.test.cjs','architecture/release-candidate-static.test.cjs']) {
+ execFileSync(process.execPath,[file],{stdio:'inherit'});
+}
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
 const results=[];
 try {
@@ -60,6 +64,33 @@ try {
   const summary={version,initial,distinctPixels,distinctPositions,realScene,errors,expressions:nameResults};
   results.push(summary);console.log(JSON.stringify(summary));
   await page.close();
+  // Separate iPhone-sized QA: never accept a desktop-only portrait fix.
+  const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true,reducedMotion:'reduce'});
+  const mobileChecks=[];
+  const mobileErrors=[];mobile.on('pageerror',e=>mobileErrors.push(e.message));
+  try {
+    await mobile.goto('file://'+resolve(path)+'?pregled=andjela&andjela-test=1',{waitUntil:'load',timeout:45000});
+    await mobile.waitForFunction(()=>document.getElementById('exercise-portrait')?.dataset.speaker==='andjela',null,{timeout:20000});
+    const control=mobile.getByRole('button',{name:/Proveri Anđeline izraze|Anđela:/});
+    for(let i=0;i<emotions.length;i++){
+      await control.click();
+      await mobile.waitForTimeout(140);
+      const state=await mobile.evaluate(()=>{
+        const p=document.querySelector('#exercise-portrait'),s=p?.querySelector('.portrait-stage .portrait-shot:last-child'),f=s?.querySelector('.portrait-frame');
+        const frame=f?getComputedStyle(f):null;const rect=p?.getBoundingClientRect();
+        return {emotion:s?.dataset.emotion,pose:s?.dataset.pose,position:frame?.backgroundPosition,
+          size:frame?.backgroundSize,layers:p?.querySelectorAll('.portrait-stage .portrait-shot').length,
+          visible:!!rect&&rect.width>50&&rect.height>50&&rect.width<window.innerWidth+2};
+      });
+      const pass=state.emotion===emotions[i]&&state.pose===expectedPose[i]&&state.position===(['0% 0%','50% 0%','100% 0%','50% 0%','0% 0%','100% 0%'][i])&&state.size==='300% 100%'&&state.layers===1&&state.visible;
+      if(!pass)failures++;
+      await mobile.locator('#exercise-portrait').screenshot({path:resolve(dir,version+'-mobile-'+emotions[i]+'.png'),animations:'disabled'});
+      mobileChecks.push({expected:emotions[i],pass,...state});
+    }
+    if(mobileErrors.length)failures++;
+  }catch(error){failures++;mobileChecks.push({pass:false,error:String(error)})}
+  finally{await mobile.close()}
+  console.log(JSON.stringify({version,mobileViewport:'390x844',mobileChecks,mobileErrors}));
  }
 }finally{await browser.close()}
 if(failures)throw new Error('Anđela QA: '+failures+' FAILED checks; see artifacts and JSON output. Six labels do NOT imply six photographic assets.');
