@@ -1,0 +1,25 @@
+name: AUREA manager staging build
+on:
+  pull_request:
+    paths:
+      - 'architecture/**'
+      - '.github/workflows/manager-staging-build.yml'
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --ignore-scripts esbuild@0.25.5 @supabase/supabase-js@2.49.4
+      - run: node architecture/build-staging-manager.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurea-manager-staging
+          path: dist-staging-manager/
+          retention-days: 3
+          if-no-files-found: error
