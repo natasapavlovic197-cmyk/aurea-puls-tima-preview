@@ -109,6 +109,47 @@ function aureaSimulationRender(){
  if($('aureaSimNext'))$('aureaSimNext').onclick=()=>{if(aureaScene<2){aureaScene++;aureaChoice=aureaSelections[aureaScene];aureaSimulationRender()}else{v35Navigate('overview')}};
 }
 
+/* Step 5: shared ten-domain measurement catalogue, clearly separate from fictional demo. */
+const aureaTenDomains=[
+ ['role_clarity','Jasnoća uloge','Svake nedelje + rotacija'],
+ ['communication','Komunikacija','Rotirajuća pitanja'],
+ ['workload','Obim posla','Svake nedelje + rotacija'],
+ ['psychological_safety','Psihološka sigurnost','Svake nedelje'],
+ ['leadership_support','Podrška rukovodioca','Rotirajuća pitanja'],
+ ['team_collaboration','Saradnja u timu','Rotirajuća pitanja'],
+ ['autonomy','Autonomija','Rotirajuća pitanja'],
+ ['fairness_recognition','Pravičnost i priznanje','Rotirajuća pitanja'],
+ ['engagement_meaning','Angažovanost i smisao','Rotirajuća pitanja'],
+ ['recovery','Oporavak','Rotirajuća pitanja']
+];
+function aureaRenderTenDomainCatalogue(){
+ const el=$('manager');
+ if(!el||$('aureaTenDomainCatalogue'))return;
+ const section=document.createElement('section');
+ section.id='aureaTenDomainCatalogue';section.className='panel section fade';
+ section.setAttribute('aria-label','Deset oblasti novog nedeljnog pulsa');
+ const head=document.createElement('div');head.className='switch';head.style.justifyContent='space-between';
+ const title=document.createElement('h2');title.textContent='Deset oblasti nedeljnog pulsa';
+ const pill=document.createElement('span');pill.className='pill';pill.textContent='Novi model · 6 pitanja nedeljno';
+ head.append(title,pill);section.append(head);
+ const note=document.createElement('p');note.className='muted';
+ note.textContent='Tri stalna i tri rotirajuća pitanja nedeljno. Rotacija se ponavlja svake četiri nedelje. Ispod je pregled obuhvata, ne rezultat zaposlenih.';
+ section.append(note);
+ const grid=document.createElement('div');grid.className='five';
+ aureaTenDomains.forEach(([code,label,cadence])=>{
+  const tile=document.createElement('div');tile.className='metric';tile.style.cursor='default';
+  const name=document.createElement('div');name.className='serif';name.style.fontSize='19px';name.textContent=label;
+  const info=document.createElement('small');info.textContent=cadence;
+  const empty=document.createElement('p');empty.className='fine';empty.textContent='Nema povezanih grupnih rezultata';
+  tile.append(name,info,empty);grid.append(tile);
+ });
+ section.append(grid);
+ const disclaimer=document.createElement('p');disclaimer.className='fine';
+ disclaimer.textContent='Prikaz stvarnih trendova biće moguć tek nakon bezbednog povezivanja grupnih podataka (najmanje 5 odgovora po pitanju i periodu). Poređenja se rade samo između istih pitanja i verzija. Nije validirani psihometrijski indeks.';
+ section.append(disclaimer);
+ const existing=el.querySelector('.five');if(existing)existing.insertAdjacentElement('afterend',section);else el.append(section);
+}
+
 /* V3.5 controls: demo-only; not an authenticated manager portal. */
 let v35screen=action?'activities':'simulation',v35draft='',v35due='',v35observation='Promene prioriteta';
 const v35OriginalRender=renderManager;
@@ -131,6 +172,7 @@ function v35Render(){
  v35OriginalRender();
  const guide=$('guide');
  if(v35screen==='overview'){
+   aureaRenderTenDomainCatalogue();
    if(guide)guide.classList.add('v35hide');
    if(aureaSelections[2]!==null){
      const selectedApproach=aureaScenes[2].options[aureaSelections[2]];
