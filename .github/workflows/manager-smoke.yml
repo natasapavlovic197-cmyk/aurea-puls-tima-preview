@@ -1,15 +1,5 @@
 name: AUREA manager mobile smoke test
 on:
-  push:
-    paths:
-      - '.github/workflows/manager-smoke.yml'
-      - 'rukovodilac/index.html'
-      - 'zaposleni/index.html'
-      - 'index.html'
-      - '.github/tests/manager-smoke.cjs'
-      - '.github/tests/portal-mock.cjs'
-      - 'portal/index.html'
-      - 'odgovor/index.html'
   workflow_dispatch:
 jobs:
   manager-smoke:
