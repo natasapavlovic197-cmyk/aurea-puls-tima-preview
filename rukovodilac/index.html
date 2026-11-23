@@ -190,6 +190,15 @@ function v35Render(){
    // Guided flow: show one task at a time, keep current inputs on navigation.
    Array.from(el.children).forEach(child=>{if(child!==guide)child.classList.add('v35hide')});
    if(guide){guide.classList.remove('v35hide')}
+   if(managerStep===0&&guide){
+     const rec=document.createElement('div');rec.className='notice';rec.id='aureaDemoRecommendation';
+     const title=document.createElement('strong');title.textContent='Predložena intervencija · Ilustrativni signal';
+     const body=document.createElement('p');body.textContent='Sa timom proverite obim zadataka, dostupne resurse i mogućnost odlaganja manje važnih obaveza.';
+     const follow=document.createElement('p');follow.textContent='Pri sledećem uporedivom merenju proverite održivost opterećenja. Promena nije dokaz uzročnog efekta.';
+     const accept=document.createElement('button');accept.type='button';accept.className='btn';accept.id='aureaAcceptRecommendation';accept.textContent='Koristi predlog kao osnovu plana';
+     accept.onclick=()=>{v35draft=body.textContent;managerStep=2;v35Render();};
+     rec.append(title,body,follow,accept);guide.append(rec);
+   }
    if(managerStep===1&&$('observation')){$('observation').value=v35observation;$('observation').onchange=e=>v35observation=e.target.value;}
    if(managerStep===2){if($('actionText')){$('actionText').value=v35draft||action?.text||'';$('actionText').oninput=e=>v35draft=e.target.value}if($('due')){$('due').value=v35due||action?.due||'';$('due').onchange=e=>v35due=e.target.value}}
    if($('nextManager'))$('nextManager').onclick=()=>{v35RememberDraft();managerStep=Math.min(2,managerStep+1);v35Render();$('guide')?.scrollIntoView({behavior:'smooth',block:'start'})};
