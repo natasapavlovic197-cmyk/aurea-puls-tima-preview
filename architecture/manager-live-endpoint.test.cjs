@@ -20,6 +20,17 @@ const event=(org,token='manager-a')=>({httpMethod:'GET',queryStringParameters:{o
  assert.equal((await handler(event('invalid'))).statusCode,400);
  assert.equal((await handler({...event(A),httpMethod:'POST'})).statusCode,405);
  assert.deepEqual(calls,[['manager-a',A],['manager-a',B]]);
+ const invalidCases=[
+  [{week:'2026-11-23',domain:'clarity',question:'Q1',favorablePercent:80},{week:'2026-11-23',domain:'clarity',question:'Q1',favorablePercent:90}],
+  Array.from({length:201},(_,i)=>({week:'2026-11-23',domain:'clarity',question:'Q'+i,favorablePercent:80})),
+  [{week:'not-a-date',domain:'clarity',question:'Q1',favorablePercent:80}],
+  [{week:'2026-11-23',domain:'',question:'Q1',favorablePercent:80}],
+  [{week:'2026-11-23',domain:'clarity',question:'Q1',favorablePercent:NaN}]
+ ];
+ for(const rows of invalidCases){
+  const guarded=createManagerEndpoint({bridge:{authenticate:async()=>({id:'manager',token:'ok'}),readSummary:async()=>rows},limit:async()=>true});
+  assert.equal((await guarded(event(A))).statusCode,503,'malformed manager report must fail closed');
+ }
  assert.throws(()=>createManagerEndpoint({bridge}),TypeError);
  console.log('PASS: manager A can read own aggregate only; cross-tenant denied, guest denied, throttle and trusted IP enforced');
 })().catch(e=>{console.error(e);process.exitCode=1});
