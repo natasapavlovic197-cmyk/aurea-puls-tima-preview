@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const html=fs.readFileSync(require('node:path').join(__dirname,'../radni-prostor/index.html'),'utf8');
+for(const rpc of ['aurea_my_companies','aurea_manager_summary','aurea_manager_cycles','aurea_manager_actions','aurea_manager_save_action'])assert.ok(html.includes(rpc),'Missing RPC '+rpc);
+assert.ok(html.includes('favorable_percent'),'Must use actual summary schema');
+assert.ok(html.includes('response_count'),'Show only aggregate counts');
+assert.ok(html.includes("token=null"),'Must support logout');
+assert.ok(html.includes("textContent=a.description"),'User text must be rendered as text');
+assert.ok(!html.includes('localStorage'),'No persistent auth token');
+assert.ok(!html.includes('service_role'),'No service role key');
+assert.ok(!html.includes('locked/manager'),'Master not modified');
+console.log('PASS: isolated staging workspace RPC contract and token hygiene');
