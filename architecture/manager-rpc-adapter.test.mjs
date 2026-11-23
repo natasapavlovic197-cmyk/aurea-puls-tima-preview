@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {myCompanies,managerClient} from './manager-rpc-adapter.mjs';
+const company='11111111-1111-4111-8111-111111111111';
+const calls=[];
+const client={rpc:async(name,args)=>{calls.push({name,args});return {data:[{ok:true}],error:null}}};
+assert.deepEqual(await myCompanies(client),[{ok:true}]);
+const m=managerClient(client,company);
+await m.cycles();await m.summary();await m.actions();
+await m.saveAction({description:'Dogovoriti tri prioriteta',status:'open'});
+assert.deepEqual(calls.map(c=>c.name),['aurea_my_companies','aurea_manager_cycles','aurea_manager_summary','aurea_manager_actions','aurea_manager_save_action']);
+assert.ok(calls.slice(1).every(c=>c.args.p_organization_id===company));
+assert.throws(()=>managerClient(client,'not-a-uuid'),/Invalid company/);
+assert.throws(()=>m.saveAction({description:'short'}),/Invalid description/);
+assert.throws(()=>m.saveAction({description:'Validna aktivnost',status:'in_progress'}),/Unsupported status/);
+const failing={rpc:async()=>({error:{message:'private table info'},data:null})};
+await assert.rejects(myCompanies(failing),e=>!e.message.includes('private table'));
+console.log('PASS: isolated manager RPC contract, input validation and generic errors');
