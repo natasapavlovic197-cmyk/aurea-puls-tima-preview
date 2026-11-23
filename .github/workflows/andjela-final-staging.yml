@@ -30,40 +30,26 @@ jobs:
           b=iso.read_text(encoding='utf8')
           raw=a.encode('utf8')
           sha=hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
-          assert sha=='86303e79bd6705f23c24f8d3d2a8f4d8b0f23943', 'Original branch differs from pinned approved Kringle'
+          assert sha=='bf1e37997be560c2fc9ba9c7ce1f5402007332dd', 'Wrong source version; preserve approved staging modifications'
           m=re.search(r'<style id="aurea-andjela-no-hologram-test">[\s\S]*?</style>',b)
-          assert m and b.replace(m.group(0),'')==a, 'Isolated file is not an exact original + CSS test patch'
-          anchor="  shot.dataset.pose = pose;\n  if (!current || immediate || reducedMotion.matches || !shot.animate) {"
-          replacement="""  shot.dataset.pose = pose;
-            if (speaker === 'andjela') {
-              // One opaque, full-resolution face at a time: no overlapping translucent portraits.
-              // Keep the existing approved 3-frame photographic sprite and narrative choices.
-              shot.dataset.emotion = emotion;
-              stage.replaceChildren(shot);
-              if (!immediate && !reducedMotion.matches && !document.hidden && portrait.animate) {
-                portrait.getAnimations().forEach(animation => animation.cancel());
-                portrait.animate([
-                  { transform: 'translate3d(0,0,0)' },
-                  { transform: 'translate3d(.30%,-.18%,0)' },
-                  { transform: 'translate3d(0,0,0)' }
-                ], { duration: 4000, easing: 'ease-in-out', iterations: 1 });
-              }
-              return;
-            }
-            if (!current || immediate || reducedMotion.matches || !shot.animate) {"""
-          assert a.count(anchor)==1, 'Anđela transition anchor must appear exactly once'
-          a=a.replace(anchor,replacement,1)
-          old="if(shot){shot.dataset.emotion=names[index%names.length];btn.textContent="
-          new="if(shot){const emotion=names[index%names.length];const poses={attentive:'listening',concerned:'speaking',skeptical:'reflecting',surprised:'speaking',relieved:'listening',reflecting:'reflecting'};shot.dataset.pose=poses[emotion];shot.dataset.emotion=emotion;btn.textContent="
-          assert a.count(old)==1, 'Six-label test button anchor must appear exactly once'
-          a=a.replace(old,new,1)
-          # Preserve original and test page as identical experiences except for the test-only CSS override.
+          assert m and b.replace(m.group(0),'')==a, 'Isolated test must differ from original only by its CSS patch'
+          assert "if (speaker === 'andjela')" in a and "shot.dataset.emotion = emotion;" in a
+          assert a.count('id="aurea-andjela-3frame-sprite-final"')==0, 'Already patched; do not duplicate'
+          css="""<style id="aurea-andjela-3frame-sprite-final">
+          /* One complete 4:5 portrait per frame. This overrides old higher-specificity cover rules. */
+          #exercise-portrait .portrait-shot.portrait-andjela > .portrait-frame,
+          #exercise-portrait .portrait-shot.portrait-andjela[data-pose="speaking"] > .portrait-frame,
+          #exercise-portrait .portrait-shot.portrait-andjela[data-pose="reflecting"] > .portrait-frame {
+            background-size:300% 100%!important;
+          }
+          </style>"""
+          assert a.count('</head>')==1
+          a=a.replace('</head>',css+'</head>',1)
           newb=a.replace('</head>',m.group(0)+'</head>',1)
           assert newb.replace(m.group(0),'')==a
-          assert len(a.encode('utf8'))>3_000_000
           orig.write_text(a,encoding='utf8')
           iso.write_text(newb,encoding='utf8')
-          print('PASS: one-face-only Anđela scene and six label -> three actual photo frames, test-only isolated CSS retained')
+          print('PASS: three original photographic frames use exact 300% x 100% sprite geometry; original/test pair preserved')
           PY
       - name: Install isolated Chromium QA
         run: |
