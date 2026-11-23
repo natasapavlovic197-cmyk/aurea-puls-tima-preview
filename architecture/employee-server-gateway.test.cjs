@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const {createEmployeeGateway}=require('./employee-server-gateway.cjs');
-const hash='b'.repeat(64),answers=['J1','K1','O1','P1'].map(code=>({code,rating:6,recipient:'secret'}));
+const hash='b'.repeat(64),answers=['J1','K1','O1','P1'].map(code=>({code,rating:6}));
 const event=(action,body={})=>({httpMethod:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,hash,...body})});
 (async()=>{
  let calls=0;
@@ -12,6 +12,7 @@ const event=(action,body={})=>({httpMethod:'POST',headers:{'content-type':'appli
  assert.equal(invitation.body.includes('PRIVATE'),false);
  assert.equal(JSON.parse(invitation.body).questions.length,4);
  assert.equal((await handler(event('submit',{answers}))).statusCode,200);
+ assert.equal((await handler(event('submit',{answers:answers.map(a=>({...a,recipient:'secret'}))}))).statusCode,400);
  assert.equal(calls,2);
  assert.equal((await handler(event('invitation',{email:'private@example.com'}))).statusCode,400);
  assert.equal((await handler(event('submit',{answers,employeeId:'private-id'}))).statusCode,400);
