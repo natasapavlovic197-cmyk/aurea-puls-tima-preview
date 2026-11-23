@@ -11,14 +11,23 @@ class StagingEngine {
     if(!Number.isFinite(now)||ttlMs<=0)throw Error('invalid expiry');
     const token=crypto.randomBytes(32).toString('hex');
     const hash=key(token);
-    this.invites.set(hash,{tenant,week,employee,expires:now+ttlMs,completed:false,reminded:false});
+    this.invites.set(hash,{tenant,week,employee,expires:now+ttlMs,issuedAt:now,completed:false,reminded:false});
     return token;
   }
   redeem({token,tenant,week,domain,value,now}){
+    return this.redeemBatch({token,tenant,week,answers:[{domain,value}],now});
+  }
+  redeemBatch({token,tenant,week,answers,now}){
     const hash=key(token), i=this.invites.get(hash);
-    if(!i||i.tenant!==tenant||i.week!==week||i.completed||now>i.expires||!Number.isInteger(value)||value<1||value>5) return false;
-    // Record only aggregate answer fields. No employee ID, invitation ID or precise submission timestamp.
-    this.answers.push({tenant,week,domain,value});
+    if(!i||i.tenant!==tenant||i.week!==week||i.completed||!Number.isFinite(now)||now>i.expires||now<i.issuedAt) return false;
+    if(!Array.isArray(answers)||answers.length===0||answers.length>30) return false;
+    const domains=new Set();
+    for(const a of answers){
+      if(!a||typeof a.domain!=='string'||!a.domain.trim()||a.domain.length>64||domains.has(a.domain)||!Number.isInteger(a.value)||a.value<1||a.value>5)return false;
+      domains.add(a.domain);
+    }
+    // Atomic, validated submission. No identity, token or precise timestamp in response records.
+    this.answers.push(...answers.map(a=>({tenant,week,domain:a.domain,value:a.value})));
     i.completed=true;return true;
   }
   report({tenant,week,domain,teamSize,requester}){
