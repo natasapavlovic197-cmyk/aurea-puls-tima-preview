@@ -6,7 +6,7 @@ const {createServerEntry}=require('./manager-server-entry.cjs');
 const {createHttpAdapter}=require('./manager-http-adapter.cjs');
 function createStagingServer({env,query,fetchImpl,employeeHandler,dist=path.resolve('dist-staging-manager')}={}){
  const dispatch=createHttpAdapter({handler:createServerEntry({env,query,fetchImpl})});
- const assets=new Map([['/','index.html'],['/index.html','index.html'],['/manager-login.css','manager-login.css'],['/manager-login.bundle.js','manager-login.bundle.js'],['/staging-config.js','staging-config.js']]);
+ const assets=new Map([['/employee','employee.html'],['/employee.bundle.js','employee.bundle.js'],['/','index.html'],['/index.html','index.html'],['/manager-login.css','manager-login.css'],['/manager-login.bundle.js','manager-login.bundle.js'],['/staging-config.js','staging-config.js']]);
  return http.createServer(async(req,res)=>{
  res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');res.setHeader('referrer-policy','no-referrer');
  try{
