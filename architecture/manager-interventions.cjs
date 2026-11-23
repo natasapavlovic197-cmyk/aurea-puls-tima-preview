@@ -1,6 +1,8 @@
 'use strict';
 // AUREA intervention decision-support v0.1: non-clinical, low-risk manager actions.
 // Consumes privacy-cleared item-level signals only; never individual answers.
+const {anchors,rotation}=require('./psychometric-item-bank.cjs');
+const ITEM_DOMAIN=new Map([...anchors,...rotation.flat()].map(item=>[item.code,item.domain]));
 const CATALOG=Object.freeze({
  role_clarity:{title:'Razjasniti prioritete',action:'Na kratkom timskom sastanku dogovorite najviše tri prioriteta i odgovorne osobe za narednu nedelju.',check:'Sledeće nedelje proverite da li su očekivanja i prioriteti jasniji.'},
  communication:{title:'Urediti tok informacija',action:'Dogovorite jedan pouzdan kanal i rok za prenošenje informacija važnih za rad.',check:'Pri sledećem merenju iste stavke proverite pravovremenost informacija.'},
@@ -26,6 +28,7 @@ function recommendInterventions(signals,{max=1}={}){
    typeof s.persistentUnfavorable!=='boolean'||!Number.isInteger(s.observedCount)||s.observedCount<1)
    throw TypeError('Invalid privacy-cleared signal');
   if(!CATALOG[s.domain])throw TypeError('Unknown domain');
+  if(ITEM_DOMAIN.get(s.itemCode)!==s.domain)throw TypeError('Item/domain mismatch');
   // A single unfavorable observation is not a basis for an intervention alert.
   if(s.persistentUnfavorable&&s.observedCount>=2)eligible.push(s);
  }
