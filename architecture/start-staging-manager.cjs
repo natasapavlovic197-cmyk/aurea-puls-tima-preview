@@ -1,0 +1,16 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const {Pool}=require('pg');
+const {createStagingServer}=require('./staging-manager-server.cjs');
+const env=process.env;
+const url=new URL(env.AUREA_SUPABASE_URL);
+if(url.protocol!=='https:'||url.hostname!=='ublzmoroanhlcgpnxilw.supabase.co'||url.pathname!=='/'||url.username||url.password||url.search||url.hash)throw Error('Staging project required');
+if(!env.AUREA_SUPABASE_PUBLISHABLE_KEY?.startsWith('sb_publishable_')||!env.AUREA_LIMITER_SECRET||env.AUREA_LIMITER_SECRET.length<32||!env.AUREA_LIMITER_DATABASE_URL)throw Error('Missing staging configuration');
+const dist=path.resolve('dist-staging-manager');
+fs.writeFileSync(path.join(dist,'staging-config.js'),'globalThis.AUREA_STAGING_CONFIG=Object.freeze('+JSON.stringify({url:url.origin,key:env.AUREA_SUPABASE_PUBLISHABLE_KEY,endpoint:'/api/manager-workspace'})+');');
+const pool=new Pool({connectionString:env.AUREA_LIMITER_DATABASE_URL,max:2,connectionTimeoutMillis:5000});
+const server=createStagingServer({env,query:(sql,args)=>pool.query(sql,args),dist});
+server.listen(8787,'127.0.0.1',()=>console.log('AUREA staging: http://127.0.0.1:8787'));
+async function stop(){server.close(async()=>{await pool.end();});}
+process.once('SIGINT',stop);process.once('SIGTERM',stop);
