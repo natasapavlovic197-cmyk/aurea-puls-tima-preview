@@ -27,3 +27,10 @@ No Netlify deployment, TinyFish run, paid resource provisioning, secret mutation
 - The staging `pg_policies` catalog shows `aurea_rate_limit_server_only` on `aurea_private.api_rate_limits`, scoped to role `aurea_rate_limiter`, command `ALL`, with `USING (true)` and `WITH CHECK (true)`.
 - Combined with the previously verified schema/table grants, this indicates that the **role's own** limiter upsert is permitted by policy once a valid SQL session runs as that role. This is **not a live transaction test** and does **not** resolve the role's `NOLOGIN` status.
 - No grants, policies, roles, or secrets were changed during verification.
+
+## Approved staging role membership applied (2026-11-23)
+- Created earlier: `aurea_limiter_login` LOGIN role with **NULL password**, NOINHERIT, NOBYPASSRLS, no administrative powers.
+- Applied: `GRANT aurea_rate_limiter TO aurea_limiter_login WITH INHERIT FALSE, SET TRUE` (PostgreSQL 17).
+- Verified: membership `inherit_option=false`, `set_option=true`, `admin_option=false`; login still has **no direct USAGE** on `aurea_private` and **no direct INSERT** on the limiter table.
+- Intended flow: restricted SQL session connects as `aurea_limiter_login`, then explicitly `SET ROLE aurea_rate_limiter` and validates `current_user` before limiter upsert. **Current application does not yet implement this flow**, and the role has no password, so live connection remains disabled.
+- Do not configure a password via a chat transcript or commit. A server-side secret management plan, authenticated session identity test, and transaction/pool safety review are still required before enabling.
