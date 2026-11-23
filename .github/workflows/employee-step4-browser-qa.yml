@@ -5,6 +5,7 @@ on:
     paths:
       - 'architecture/employee-step4-browser-qa.cjs'
       - 'architecture/employee-six-question-preview.html'
+      - 'zaposleni/index.html'
       - '.github/workflows/employee-step4-browser-qa.yml'
 jobs:
   qa:
@@ -20,7 +21,12 @@ jobs:
       - run: |
           npm install --no-save --no-package-lock playwright@1.58.2
           npx playwright install --with-deps chromium
-      - run: node architecture/employee-step4-browser-qa.cjs
+      - name: Verify preview
+        run: node architecture/employee-step4-browser-qa.cjs
+      - name: Verify integrated employee route
+        env:
+          AUREA_EMPLOYEE_FILE: ../zaposleni/index.html
+        run: node architecture/employee-step4-browser-qa.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
