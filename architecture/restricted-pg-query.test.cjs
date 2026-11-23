@@ -3,15 +3,21 @@ const assert=require('node:assert/strict');
 const {createRestrictedLimiterQuery}=require('./restricted-pg-query.cjs');
 const {SQL}=require('./postgres-durable-limiter.cjs');
 const params=['a'.repeat(64),1700000100];
-function pool(role='aurea_rate_limiter',bypassrls=false,fail=false){
- let released=0,queries=0;
- return {get released(){return released},get queries(){return queries},async connect(){return {async query(sql,p){queries++;if(sql.includes('current_user as current_user'))return {rows:[{current_user:role,bypassrls}]};if(fail)throw Error('DB offline');assert.equal(sql,SQL);assert.deepEqual(p,params);return {rows:[{hits:1}]}},release(){released++}}}};
+function pool({login='aurea_limiter_login',role='aurea_rate_limiter',bypass=false,failAt=''}={}){
+ const calls=[],releases=[];
+ return {calls,releases,async connect(){return {async query(sql,p){calls.push(sql);if(sql===failAt)throw Error('DB offline');if(sql.includes('session_user as login_user'))return {rows:[{login_user:login,active_user:role,bypassrls:bypass}]};if(sql===SQL){assert.deepEqual(p,params);return {rows:[{hits:1}]}}return {rows:[]}},release(x){releases.push(x)}}}};
 }
 (async()=>{
- const good=pool();assert.equal((await createRestrictedLimiterQuery({pool:good})(SQL,params)).rows[0].hits,1);assert.equal(good.released,1);
- for(const p of [pool('postgres'),pool('aurea_rate_limiter',true)]){await assert.rejects(()=>createRestrictedLimiterQuery({pool:p})(SQL,params),/Untrusted/);assert.equal(p.queries,1);assert.equal(p.released,1)}
- const broken=pool('aurea_rate_limiter',false,true);await assert.rejects(()=>createRestrictedLimiterQuery({pool:broken})(SQL,params),/DB offline/);assert.equal(broken.released,1);
- const blocked=pool();await assert.rejects(()=>createRestrictedLimiterQuery({pool:blocked})('select * from auth.users',params),/Unapproved/);assert.equal(blocked.queries,0);
+ const good=pool();assert.equal((await createRestrictedLimiterQuery({pool:good})(SQL,params)).rows[0].hits,1);
+ assert.deepEqual(good.calls,['BEGIN','SET LOCAL ROLE aurea_rate_limiter',good.calls[2],SQL,'COMMIT']);
+ assert.equal(good.releases[0],undefined);
+ for(const opts of [{login:'postgres'},{role:'postgres'},{bypass:true}]){
+  const p=pool(opts);await assert.rejects(()=>createRestrictedLimiterQuery({pool:p})(SQL,params),/Untrusted/);
+  assert.ok(p.calls.includes('ROLLBACK'));assert.ok(!p.calls.includes(SQL));assert.deepEqual(p.releases,[true]);
+ }
+ const down=pool({failAt:SQL});await assert.rejects(()=>createRestrictedLimiterQuery({pool:down})(SQL,params),/DB offline/);
+ assert.ok(down.calls.includes('ROLLBACK'));assert.deepEqual(down.releases,[true]);
+ const blocked=pool();await assert.rejects(()=>createRestrictedLimiterQuery({pool:blocked})('select * from auth.users',params),/Unapproved/);assert.equal(blocked.calls.length,0);
  assert.throws(()=>createRestrictedLimiterQuery(),TypeError);
- console.log('PASS: restricted database identity verified, admin/bypass rejected, connections released on failure, SQL allowlisted');
+ console.log('PASS: transaction-local role, both identities, allowlist, rollback and discard on failure');
 })().catch(e=>{console.error(e);process.exitCode=1});
