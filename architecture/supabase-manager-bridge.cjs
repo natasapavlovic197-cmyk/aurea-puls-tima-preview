@@ -46,7 +46,7 @@ function createManagerBridge({url,key,fetchImpl=globalThis.fetch}={}){
   return rows;
  }
  async function saveAction({token,organizationId,description,dueOn=null,cycleId=null,actionId=null,status='open'}){
-  if(typeof description!=='string'||description.trim().length<3||description.trim().length>2000||!['open','done'].includes(status)||(actionId!==null&&!UUID.test(actionId))||(cycleId!==null&&!UUID.test(cycleId))||(dueOn!==null&&(typeof dueOn!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueOn))))throw new TypeError('Invalid activity');
+  if(typeof description!=='string'||description.trim().length<3||description.trim().length>2000||!['open','done'].includes(status)||(actionId!==null&&!UUID.test(actionId))||(cycleId!==null&&!UUID.test(cycleId))||(dueOn!==null&&(typeof dueOn!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(dueOn))))throw new TypeError('Invalid activity');
   const id=await actionRpc('aurea_manager_save_action',token,organizationId,{p_description:description.trim(),p_due_on:dueOn,p_cycle_id:cycleId,p_action_id:actionId,p_status:status});
   if(typeof id!=='string'||!UUID.test(id))throw new Error('Invalid saved activity');
   return id;
