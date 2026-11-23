@@ -1,15 +1,5 @@
 name: AUREA B2B privacy unit checks
 on:
-  push:
-    paths:
-      - 'architecture/**'
-      - 'netlify/functions/**'
-      - 'rukovodilac/**'
-      - 'locked/**'
-      - 'v4-demo/**'
-      - 'portal/**'
-      - 'radni-prostor/**'
-      - '.github/workflows/b2b-privacy-checks.yml'
   workflow_dispatch:
 jobs:
   privacy:
