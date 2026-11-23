@@ -16,3 +16,4 @@ jobs:
       - run: node architecture/privacy-guard.test.cjs
       - run: node architecture/staging-engine.test.cjs
       - run: node architecture/weekly-orchestrator.test.cjs
+      - run: node architecture/report-release.test.cjs
