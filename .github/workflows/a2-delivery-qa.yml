@@ -1,0 +1,22 @@
+name: A2 isolated delivery QA
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/employee-ten-domains-step5
+    paths:
+      - '.github/workflows/a2-delivery-qa.yml'
+      - 'architecture/weekly-delivery-pipeline*.cjs'
+      - 'architecture/weekly-delivery-store*.cjs'
+permissions:
+  contents: read
+jobs:
+  isolated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test architecture/weekly-delivery-pipeline.test.cjs architecture/weekly-delivery-store.test.cjs architecture/weekly-recipient-sender.test.cjs architecture/weekly-report-delivery.test.cjs
