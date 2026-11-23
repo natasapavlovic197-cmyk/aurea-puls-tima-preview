@@ -37,3 +37,4 @@ jobs:
       - run: node architecture/supabase-manager-bridge.test.cjs
       - run: node architecture/netlify-entrypoints.test.cjs
       - run: node architecture/postgres-durable-limiter.test.cjs
+      - run: node architecture/manager-live-endpoint.test.cjs
