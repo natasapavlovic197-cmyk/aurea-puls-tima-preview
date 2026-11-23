@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {buildReport}=require('./report-release.cjs');
+const b={tenant:'A',week:'2026-11-23',teamSize:8,cycleClosed:true,domains:{communication:[4,5,3,4,5],clarity:[4,4,4,4,4]}};
+let r=buildReport(b);
+assert.equal(r.status,'ready');
+assert.deepEqual(Object.keys(r.report.domains),['clarity','communication']);
+assert.equal(r.report.domains.communication,4.2);
+assert.equal(buildReport({...b,cycleClosed:false}),null);
+assert.equal(buildReport({...b,teamSize:4}),null);
+assert.equal(buildReport({...b,domains:{communication:[5,5,5,5]}}),null);
+assert.equal(buildReport({...b,domains:{communication:[5,5,5,5,5],clarity:[4,4,4,4]}}),null);
+assert.equal(buildReport({...b,domains:{communication:[5,5,5,5,6]}}),null);
+assert.equal(buildReport({...b,previousPublication:r.report}).status,'already_published');
+assert.equal(buildReport({...b,tenant:'B',previousPublication:r.report}).status,'ready');
+console.log('PASS: immutable weekly release, complete suppression, tenant boundaries, validation');
