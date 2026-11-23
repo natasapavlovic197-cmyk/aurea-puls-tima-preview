@@ -20,8 +20,12 @@ function createEmployeeGateway({adapter,rateLimit}={}){
   if(event.isBase64Encoded||typeof event.body!=='string'||Buffer.byteLength(event.body,'utf8')>8192)return reply(400,'invalid');
   let body;try{body=JSON.parse(event.body)}catch{return reply(400,'invalid')}
   if(!body||typeof body!=='object'||Array.isArray(body)||typeof body.hash!=='string'||!HASH.test(body.hash))return reply(400,'invalid');
+  // Strict request schema: reject extra personal fields instead of silently accepting them.
+  const allowed=body.action==='submit'?['action','hash','answers']:['action','hash'];
+  if(Object.keys(body).some(k=>!allowed.includes(k)))return reply(400,'invalid');
   if(!['invitation','submit'].includes(body.action))return reply(400,'invalid');
   if(body.action==='submit'&&!validAnswers(body.answers))return reply(400,'invalid');
+  if(body.action==='invitation'&&Object.hasOwn(body,'answers'))return reply(400,'invalid');
   if(typeof rateLimit!=='function'||typeof adapter?.invitation!=='function'||typeof adapter?.submit!=='function')return reply(503,'unavailable');
   try{
    // Durable, shared rate limit MUST be configured before deployment. Fail closed.
