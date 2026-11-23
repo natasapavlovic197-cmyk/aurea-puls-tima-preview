@@ -9,7 +9,10 @@ const id=x=>Number.isSafeInteger(x)&&x>0;
 const week=x=>{if(typeof x!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(x))return false;const d=new Date(x+'T12:00:00Z');return Number.isFinite(+d)&&d.getUTCDay()===1&&d.toISOString().slice(0,10)===x};
 const action=x=>['invite','reminder','report'].includes(x);
 const identitySQL="select session_user as login_user,current_user as active_user,r.rolbypassrls as bypassrls,r.rolsuper as superuser,r.rolcreaterole as createrole,r.rolcreatedb as createdb,coalesce((select ssl from pg_stat_ssl where pid=pg_backend_pid()),false) as tls from pg_roles r where r.rolname=current_user";
+const address=x=>typeof x==='string'&&x.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x);
+const expiry=x=>typeof x==='string'&&Number.isFinite(Date.parse(x))&&new Date(x).toISOString()===x;
 const allowed=new Map([
+ ['select aurea_private.issue_hmac_invitation($1::uuid,$2::date,$3::uuid,$4::text,$5::text,$6::timestamptz) as state',[uuid,week,uuid,address,hex,expiry]],
  ['select id,organization_id,week_start,action,lease_token from aurea_private.claim_weekly_delivery_job($1::uuid)',[uuid]],
  ['select aurea_private.finish_weekly_delivery_job($1::bigint,$2::uuid,true) as finished',[id,uuid]],
  ['select aurea_private.finish_weekly_delivery_job($1::bigint,$2::uuid,false) as finished',[id,uuid]],
@@ -47,6 +50,18 @@ function createInvitationTokenSource(secret){
  }
  return {resolveInvitationToken,hashForIssuance:scope=>createHash('sha256').update(resolveInvitationToken(scope)).digest('hex')};
 }
+function createInvitationIssuer({pool,tokens}={}){
+ if(typeof pool?.query!=='function'||typeof tokens?.hashForIssuance!=='function')throw TypeError('Invitation dependencies required');
+ return async function issue({organizationId,weekStart,invitationId,email,expiresAt}={}){
+  if(!uuid(organizationId)||!week(weekStart)||!uuid(invitationId)||typeof email!=='string'||!address(email.trim().toLowerCase())||!expiry(expiresAt))throw TypeError('Invalid invitation');
+  const hash=tokens.hashForIssuance({organizationId,weekStart,invitationId});
+  if(!hex(hash))throw Error('Invalid invitation hash');
+  const result=await pool.query('select aurea_private.issue_hmac_invitation($1::uuid,$2::date,$3::uuid,$4::text,$5::text,$6::timestamptz) as state',[organizationId,weekStart,invitationId,email.trim().toLowerCase(),hash,expiresAt]);
+  const state=result?.rows?.length===1?result.rows[0].state:null;
+  if(!['created','existing','conflict','invalid','unavailable'].includes(state))throw Error('Invalid issuance result');
+  return {state,invitationId};
+ };
+}
 function readDeliveryConfig(env){
  const host=env.AUREA_DELIVERY_DB_HOST,port=env.AUREA_DELIVERY_DB_PORT,user=env.AUREA_DELIVERY_DB_USER,password=env.AUREA_DELIVERY_DB_PASSWORD,ca=env.AUREA_DELIVERY_DB_CA;
  const direct=host==='db.'+PROJECT+'.supabase.co';
@@ -64,4 +79,4 @@ function prepareDeliveryServer({env={},Pool,provider,origin,clock}={}){
  const raw=new Pool(config),pool=createRestrictedDeliveryPool({pool:raw});
  return {processNext:createDeliveryPipeline({pool,resolveInvitationToken:tokens.resolveInvitationToken,provider,origin,clock,enabled:false}),close:()=>raw.end()};
 }
-module.exports={readDeliveryConfig,createRestrictedDeliveryPool,createInvitationTokenSource,prepareDeliveryServer};
+module.exports={createInvitationIssuer,readDeliveryConfig,createRestrictedDeliveryPool,createInvitationTokenSource,prepareDeliveryServer};
