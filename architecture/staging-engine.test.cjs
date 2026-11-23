@@ -23,4 +23,16 @@ assert.equal(e.answers.every(x=>!('employee' in x)&&!('token' in x)&&!('invitati
 const expired=e.issueInvite({tenant:'company-a',week:'2026-11-30',employee:'a9',now:t,ttlMs:1000});
 assert.equal(e.redeem({token:expired,tenant:'company-a',week:'2026-11-30',domain:'trust',value:5,now:t+1001}),false);
 assert.equal(e.redeem({token:b,tenant:'company-a',week,domain:'trust',value:5,now:t+1000}),false);
-console.log('PASS: tenant isolation, token expiry/replay, anonymous storage, privacy suppression and idempotent weekly jobs');
+
+// Multi-question pulse is validated atomically; invalid submissions must not consume an invite.
+const multi=e.issueInvite({tenant:'company-a',week:'2026-12-07',employee:'a-multi',now:t});
+const baseline=e.answers.length;
+assert.equal(e.redeemBatch({token:multi,tenant:'company-a',week:'2026-12-07',now:t+1000,answers:[{domain:'clarity',value:4},{domain:'workload',value:6}]}),false,'invalid value rejects entire batch');
+assert.equal(e.answers.length,baseline,'no partial response');
+assert.equal(e.redeemBatch({token:multi,tenant:'company-a',week:'2026-12-07',now:t+1000,answers:[{domain:'clarity',value:4},{domain:'clarity',value:3}]}),false,'duplicate domain rejected');
+assert.equal(e.redeemBatch({token:multi,tenant:'company-b',week:'2026-12-07',now:t+1000,answers:[{domain:'clarity',value:4}]}),false,'cross-tenant batch denied');
+assert.equal(e.redeemBatch({token:multi,tenant:'company-a',week:'2026-12-07',now:t+1000,answers:[{domain:'clarity',value:4},{domain:'workload',value:2},{domain:'communication',value:5},{domain:'collaboration',value:4}]}),true,'four-question pulse accepted');
+assert.equal(e.answers.length,baseline+4);
+assert.equal(e.redeemBatch({token:multi,tenant:'company-a',week:'2026-12-07',now:t+2000,answers:[{domain:'clarity',value:1}]}),false,'single-use for whole pulse');
+assert.equal(e.answers.every(x=>Object.keys(x).sort().join(',')==='domain,tenant,value,week'),true,'no answer identity or timestamp');
+console.log('PASS: tenant isolation, token expiry/replay, anonymous storage, privacy suppression and idempotent weekly jobs, atomic four-question pulse');
