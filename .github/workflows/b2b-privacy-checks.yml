@@ -47,6 +47,7 @@ jobs:
       - run: node architecture/manager-privacy-threshold.test.cjs
       - run: node architecture/manager-trend-signals.test.cjs
       - run: node architecture/monthly-manager-review.test.cjs
+      - run: node architecture/psychometric-item-bank.test.cjs
       - run: node architecture/manager-runtime.test.cjs
       - run: node architecture/restricted-pg-query.test.cjs
       - run: node architecture/staging-manager-service.test.cjs
