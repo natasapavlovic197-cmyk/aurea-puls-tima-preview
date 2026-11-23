@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {CATALOG,recommendInterventions}=require('./manager-interventions.cjs');
+const signal=(domain,score=30,extra={})=>({domain,itemCode:'A_WORKLOAD',itemVersion:1,latestWeek:'2026-11-23',latestFavorablePercent:score,persistentUnfavorable:true,observedCount:2,...extra});
+assert.equal(Object.keys(CATALOG).length,10);
+const output=recommendInterventions([signal('workload'),signal('communication',40)],{max:2});
+assert.equal(output.length,2);
+assert.equal(output[0].domain,'workload');
+assert.equal(output[0].requiresManagerJudgment,true);
+assert.equal(recommendInterventions([signal('workload',30,{persistentUnfavorable:false})]).length,0);
+assert.equal(recommendInterventions([signal('workload',30,{observedCount:1})]).length,0);
+assert.equal(recommendInterventions([signal('workload'),signal('workload',35)],{max:3}).length,1);
+assert.throws(()=>recommendInterventions([signal('workload',NaN)]),/Invalid/);
+assert.throws(()=>recommendInterventions([signal('unknown')]),/Unknown/);
+assert.throws(()=>recommendInterventions([], {max:4}),/Invalid/);
+console.log('PASS: ten-domain intervention catalog, conservative trigger, deduplication, validation and no individual inference');
