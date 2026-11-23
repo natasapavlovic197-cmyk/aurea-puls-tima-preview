@@ -27,7 +27,7 @@ function mountManagerWorkspace(root,client){
    const status=node('select');status.setAttribute('aria-label','Status aktivnosti');for(const [value,label] of [['open','Otvoreno'],['done','Završeno']]){const opt=node('option',label);opt.value=value;status.append(opt);}
 
    for(const a of data.activities){
-    const row=node('div',undefined,'notice');row.append(node('p',a.description),node('p','Rok: '+(a.due_on||'Nije određen')+' · '+({open:'Otvoreno',done:'Završeno',in_progress:'U toku',cancelled:'Otkazano'}[a.status]||'Nepoznato'),'fine'));
+    const row=node('div',undefined,'notice');row.append(node('p',a.description),node('p','Rok: '+(a.due_on||'Nije određen')+' · Status: '+({open:'Otvoreno',done:'Završeno',in_progress:'U toku',cancelled:'Otkazano'}[a.status]||'Nepoznato'),'fine'));
     if(['open','done'].includes(a.status)){const edit=node('button','Izmeni','btn');edit.type='button';edit.onclick=()=>{editing=a;status.value=a.status;desc.value=a.description;due.value=a.due_on||'';desc.focus();};row.append(edit);}
     actions.append(row);
    }
