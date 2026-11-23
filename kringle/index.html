@@ -1852,7 +1852,14 @@ h1,h2,h3,.wp-title,.ap-top h2,.dash-banner h1{font-family:'Libre Baskerville',Ge
 @keyframes aureaStepIn{from{opacity:.3;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
 @media(prefers-reduced-motion:reduce){#pulse-manager-flow .signature-questions fieldset{animation:none}}
 </style>
-</head>
+<style id="aurea-andjela-3frame-sprite-final">
+/* One complete 4:5 portrait per frame. This overrides old higher-specificity cover rules. */
+#exercise-portrait .portrait-shot.portrait-andjela > .portrait-frame,
+#exercise-portrait .portrait-shot.portrait-andjela[data-pose="speaking"] > .portrait-frame,
+#exercise-portrait .portrait-shot.portrait-andjela[data-pose="reflecting"] > .portrait-frame {
+  background-size:300% 100%!important;
+}
+</style></head>
 <body>
 <header class="masthead">
 <div class="shell">
