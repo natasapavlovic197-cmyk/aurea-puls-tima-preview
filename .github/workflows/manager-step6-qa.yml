@@ -1,0 +1,20 @@
+name: AUREA step 6 intervention and activity QA
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'architecture/manager-action-plan.cjs'
+      - 'architecture/manager-action-plan.test.cjs'
+      - 'architecture/manager-interventions.cjs'
+      - '.github/workflows/manager-step6-qa.yml'
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test architecture/manager-action-plan.test.cjs
