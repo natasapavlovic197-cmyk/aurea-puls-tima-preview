@@ -1,0 +1,13 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const html=fs.readFileSync(require('node:path').join(__dirname,'../portal/index.html'),'utf8');
+assert.match(html,/aurea_my_companies/);
+assert.match(html,/aurea_manager_summary/);
+assert.match(html,/aurea_manager_actions/);
+assert.match(html,/aurea_manager_save_action/);
+assert.match(html,/\$\('password'\)\.value='';const companies=/,'Password must be cleared after successful authentication');
+assert.match(html,/\$\('password'\)\.value='';status\('Prijava ili učitavanje nije uspelo/,'Password must be cleared after failed authentication');
+assert.doesNotMatch(html,/throw Error\(data\.msg\|\|data\.message/,'Internal API error must not be shown to manager');
+assert.match(html,/Prijava je istekla ili nemate ovlašćenje/);
+console.log('PASS: portal retains real RPCs and avoids raw backend errors and lingering passwords');
