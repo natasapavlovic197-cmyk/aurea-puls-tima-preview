@@ -20,7 +20,9 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Test both locked demo journeys at iPhone 13 viewport
-        run: npx playwright test --config=playwright.config.cjs
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 > /tmp/aurea-qa-http.log 2>&1 &
+          npx playwright test --config=playwright.config.cjs
       - name: Keep screenshots and failure traces
         if: always()
         uses: actions/upload-artifact@v4
