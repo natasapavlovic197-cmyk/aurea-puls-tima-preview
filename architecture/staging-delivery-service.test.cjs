@@ -40,3 +40,29 @@ test('server cannot activate and disabled worker never touches database or provi
  for(const key of ['AUREA_DELIVERY_ENABLED','AUREA_DELIVERY_DEPLOY_APPROVED'])assert.throws(()=>prepareDeliveryServer({...opts,env:{...env,[key]:'true'}}));
  assert.equal(opened,0);const s=prepareDeliveryServer(opts);assert.equal((await s.processNext()).status,'disabled');await s.close();assert.equal(closed,1);
 });
+
+test('issuer persists only scoped hash and handles idempotent outcomes',async()=>{
+ const {createInvitationIssuer}=require('./staging-delivery-service.cjs');
+ const tokens=createInvitationTokenSource(env.AUREA_INVITATION_HMAC_SECRET);
+ const scope={organizationId:U,weekStart:W,invitationId:V},input={...scope,email:' QA@example.invalid ',expiresAt:'2026-11-29T12:00:00.000Z'};
+ let calls=0;
+ const issuer=createInvitationIssuer({tokens,pool:{async query(sql,p){
+  assert.equal(sql,'select aurea_private.issue_hmac_invitation($1::uuid,$2::date,$3::uuid,$4::text,$5::text,$6::timestamptz) as state');
+  assert.deepEqual(p,[U,W,V,'qa@example.invalid',tokens.hashForIssuance(scope),input.expiresAt]);
+  assert.ok(!p.includes(tokens.resolveInvitationToken(scope)));
+  return {rows:[{state:['created','existing','conflict'][calls++]}]};
+ }}});
+ for(const state of ['created','existing','conflict'])assert.deepEqual(await issuer(input),{state,invitationId:V});
+ for(const bad of [{email:'bad'},{weekStart:'2026-11-24'},{invitationId:'bad'},{expiresAt:'not-a-date'}])await assert.rejects(issuer({...input,...bad}));
+ assert.equal(calls,3);
+});
+test('issuer SQL passes restricted pool and rejects unexpected results',async()=>{
+ const {createInvitationIssuer}=require('./staging-delivery-service.cjs');
+ const tokens=createInvitationTokenSource(env.AUREA_INVITATION_HMAC_SECRET);
+ let count=0;
+ const raw={async connect(){return {async query(sql,p){if(sql.startsWith('select session_user'))return {rows:[{login_user:LOGIN,active_user:LOGIN,bypassrls:false,superuser:false,createrole:false,createdb:false,tls:true}]};if(sql.includes('issue_hmac_invitation')){count++;assert.equal(p.length,6);return {rows:[{state:'created'}]}}return {rows:[]}},release(){}}}};
+ const pool=createRestrictedDeliveryPool({pool:raw});
+ const input={organizationId:U,weekStart:W,invitationId:V,email:'qa@example.invalid',expiresAt:'2026-11-29T12:00:00.000Z'};
+ assert.equal((await createInvitationIssuer({pool,tokens})(input)).state,'created');assert.equal(count,1);
+ await assert.rejects(createInvitationIssuer({tokens,pool:{query:async()=>({rows:[{state:'unexpected'}]})}})(input));
+});
