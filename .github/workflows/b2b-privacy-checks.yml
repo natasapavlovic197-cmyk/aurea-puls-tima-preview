@@ -40,3 +40,4 @@ jobs:
       - run: node architecture/manager-live-endpoint.test.cjs
       - run: node architecture/two-tenant-http-rehearsal.test.cjs
       - run: node architecture/manager-privacy-threshold.test.cjs
+      - run: node architecture/manager-runtime.test.cjs
