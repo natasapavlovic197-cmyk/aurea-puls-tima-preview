@@ -48,6 +48,27 @@ const path = require('path');
   await assert(await page.locator('#v35status').isVisible(),'activity status control');
   await page.locator('#v35status').click();
   await assert((await page.locator('#manager').innerText()).includes('Završeno'),'status updated');
+  await page.goto(pathToFileURL(path.resolve('index.html')).href);
+  await assert(await page.locator('a[href="/zaposleni/"]').count()===1,'landing links to employee demo');
+  await assert(await page.locator('a[href="/rukovodilac/"]').count()===1,'landing links to manager demo');
+  await assert(await page.locator('a[href="/portal/"]').count()===1,'landing links to secure portal');
+  await page.goto(pathToFileURL(path.resolve('zaposleni/index.html')).href);
+  await assert(await page.locator('#next').isDisabled(),'employee cannot continue unanswered');
+  for(let i=0;i<4;i++){
+   await page.locator('input[name="answer"][value="4"]').check();
+   await assert(await page.locator('#next').isEnabled(),'employee answer '+(i+1)+' enables next');
+   if(i===1){
+    await page.locator('#prev').click();
+    await assert(await page.locator('input[name="answer"][value="4"]').isChecked(),'employee previous answer retained');
+    await page.locator('#next').click();
+   }
+   await page.locator('#next').click();
+  }
+  await assert(await page.locator('.aurea-finale').isVisible(),'employee completion');
+  await page.locator('#again').click();
+  await assert(await page.locator('#next').isDisabled(),'employee restart clears answers');
+  await page.locator('#week').selectOption('2');
+  await assert((await page.locator('#employee').innerText()).includes('Nedelja 2'),'employee week selector');
   await assert(errors.length===0,'no JavaScript page errors: '+errors.join(' | '));
   console.log('ALL MOBILE SMOKE TESTS PASSED');
  }catch(e){console.error('FAILED',e.stack);console.error('BROWSER ERRORS',errors);process.exitCode=1}
