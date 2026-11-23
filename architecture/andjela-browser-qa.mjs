@@ -1,44 +1,84 @@
 import {chromium} from 'playwright';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {createHash} from 'node:crypto';
 const out=resolve('artifacts/andjela-qa');
 await mkdir(out,{recursive:true});
+const states=[['attentive','0% 0%'],['concerned','50% 0%'],['skeptical','100% 0%'],['surprised','50% 0%'],['relieved','0% 0%'],['reflecting','100% 0%']];
+let failures=0;
+const check=(name,pass,details={})=>{
+ console.log(JSON.stringify({check:name,result:pass?'PASS':'FAIL',...details}));
+ if(!pass)failures++;
+};
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+async function snap(page){
+ return page.evaluate(()=>{
+  const p=document.querySelector('#exercise-portrait'),s=p?.querySelector('.portrait-stage');
+  const shots=[...(s?.querySelectorAll('.portrait-shot')||[])];
+  const shot=shots.at(-1),frame=shot?.querySelector('.portrait-frame');
+  const r=shot?.getBoundingClientRect(),style=frame?getComputedStyle(frame):null;
+  const visibleLayers=shots.filter(x=>{
+   const c=getComputedStyle(x),b=x.getBoundingClientRect();
+   return c.display!=='none'&&c.visibility!=='hidden'&&Number(c.opacity)>0&&b.width>0&&b.height>0;
+  }).length;
+  return {speaker:p?.dataset.speaker,pose:shot?.dataset.pose,emotion:shot?.dataset.emotion,
+    visible:!!r&&r.width>0&&r.height>0,position:style?.backgroundPosition,size:style?.backgroundSize,
+    hasImage:!!style&&style.backgroundImage!=='none',layers:shots.length,visibleLayers};
+ });
+}
 try{
- for(const [name,path] of [['original','kringle/index.html'],['isolated','kringle-andjela-test/index.html']]){
-  const page=await browser.newPage({viewport:{width:1280,height:800},deviceScaleFactor:1});
-  const errors=[];
-  page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('file://'+resolve(path),{waitUntil:'domcontentloaded',timeout:45000});
-  await page.screenshot({path:resolve(out,name+'-initial.png'),fullPage:false,timeout:30000});
-  const info=await page.evaluate(()=>{
-   const node=document.querySelector('.portrait-andjela');
-   const frame=node?.querySelector('.portrait-frame');
-   const style=frame?getComputedStyle(frame):null;
-   return {title:document.title,portraitPresent:!!node,portraitVisible:!!node&&node.getBoundingClientRect().width>0,framePresent:!!frame,backgroundSize:style?.backgroundSize||null,patchPresent:!!document.getElementById('aurea-andjela-no-hologram-test')};
-  });
-  console.log(JSON.stringify({name,...info,pageErrors:errors.slice(0,8)}));
-  if(name==='original'&&info.patchPresent)throw Error('Original unexpectedly patched');
-  if(name==='isolated'&&!info.patchPresent)throw Error('Isolated patch missing');
-  // Inspect available entry controls without changing app state or approved design.
-  const entry=await page.locator('button, a, [role="button"]').evaluateAll(nodes=>nodes.filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0}).slice(0,25).map(n=>({tag:n.tagName,text:(n.textContent||'').trim().slice(0,90),href:n.getAttribute('href')})));
-  console.log(JSON.stringify({name,visibleEntryControls:entry}));
-  // Enter the actual demonstration and record the first interactive state.
-  await page.getByRole('button',{name:'Pokrenite demonstraciju'}).click({timeout:10000});
-  await page.waitForTimeout(900);
-  const afterEntry=await page.evaluate(()=>{
-    const node=document.querySelector('.portrait-andjela');
-    const frame=node?.querySelector('.portrait-frame');
-    const r=node?.getBoundingClientRect();
-    const style=frame?getComputedStyle(frame):null;
-    return {portraitPresent:!!node,portraitVisible:!!r&&r.width>0&&r.height>0,framePresent:!!frame,backgroundPosition:style?.backgroundPosition||null,backgroundSize:style?.backgroundSize||null,visibleButtons:[...document.querySelectorAll('button')].filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0}).slice(0,20).map(n=>(n.textContent||'').trim().slice(0,80))};
-  });
-  console.log(JSON.stringify({name,afterEntry,pageErrors:errors.slice(0,8)}));
-  await page.screenshot({path:resolve(out,name+'-after-entry.png'),fullPage:false,timeout:30000});
-  if(errors.length)throw Error(name+' has browser JavaScript errors after entering demo: '+errors.length);
-  // The character may be introduced later in the scenario; don't claim facial
-  // animation is validated just because the demonstration entry works.
+ for(const [version,file] of [['original','kringle/index.html'],['isolated','kringle-andjela-test/index.html']]){
+  const page=await browser.newPage({viewport:{width:1280,height:850},deviceScaleFactor:1});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const url=pathToFileURL(resolve(file));url.searchParams.set('pregled','andjela');url.searchParams.set('andjela-test','1');
+  await page.goto(url.toString(),{waitUntil:'load',timeout:45000});
+  await page.waitForFunction(()=>document.querySelector('#exercise-portrait')?.dataset.speaker==='andjela',null,{timeout:15000});
+  const patch=await page.evaluate(()=>!!document.querySelector('#aurea-andjela-no-hologram-test'));
+  check(version+' patch confined',patch===(version==='isolated'));
+  let initial=await snap(page);
+  check(version+' real Andjela scene renders',initial.speaker==='andjela'&&initial.visible&&initial.hasImage,{initial});
+  await page.locator('#exercise-portrait').screenshot({path:resolve(out,version+'-initial.png')});
+  if(version==='isolated'){
+   let hashes=[];
+   for(const [emotion,pos] of states){
+    await page.getByRole('button',{name:/^(Proveri Anđeline izraze|Anđela:)/}).click();
+    await page.waitForFunction(expected=>document.querySelector('#exercise-portrait .portrait-shot:last-child')?.dataset.emotion===expected,emotion,{timeout:10000});
+    const state=await snap(page);
+    const bytes=await page.locator('#exercise-portrait').screenshot({path:resolve(out,'isolated-'+emotion+'.png'),animations:'disabled'});
+    hashes.push(createHash('sha256').update(bytes).digest('hex'));
+    check('isolated '+emotion+' truly displays mapped face',state.speaker==='andjela'&&state.visible&&state.hasImage&&state.position===pos&&state.size==='300% 100%',{state});
+   }
+   check('six labels resolve to exactly three genuine photographic faces',new Set(hashes).size===3,{differentFaces:new Set(hashes).size});
+  }
+  const cleanUrl=pathToFileURL(resolve(file));cleanUrl.searchParams.set('pregled','andjela');
+  await page.goto(cleanUrl.toString(),{waitUntil:'load'});
+  await page.waitForFunction(()=>document.querySelector('#exercise-portrait')?.dataset.speaker==='andjela');
+  for (const [step,pose] of [['first','speaking'],['second','reflecting']]){
+   const choice=page.locator('#exercise-options .exercise-choice').first();
+   await choice.waitFor({timeout:10000});
+   await choice.click();
+   await page.waitForFunction(expected=>document.querySelector('#exercise-portrait .portrait-shot:last-child')?.dataset.pose===expected,pose,{timeout:10000});
+   const during=await snap(page);
+   if(version==='isolated')check('isolated no double face during '+step+' transition',during.visibleLayers===1,{during});
+   await page.waitForTimeout(1250);
+   const after=await snap(page);
+   check(version+' real dialogue '+pose,after.pose===pose&&after.visible&&after.hasImage,{after});
+   await page.locator('#exercise-portrait').screenshot({path:resolve(out,version+'-'+step+'-'+pose+'.png')});
+  }
+  if(version==='isolated'){
+   const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:1});
+   mobile.on('pageerror',e=>errors.push(e.message));
+   await mobile.goto(cleanUrl.toString(),{waitUntil:'load'});
+   await mobile.waitForFunction(()=>document.querySelector('#exercise-portrait')?.dataset.speaker==='andjela');
+   const m=await snap(mobile);
+   check('isolated mobile portrait',m.visible&&m.hasImage&&m.size==='300% 100%',{mobile:m});
+   await mobile.screenshot({path:resolve(out,'isolated-mobile.png'),fullPage:false});
+   await mobile.close();
+  }
+  check(version+' browser console',errors.length===0,{errors});
   await page.close();
  }
 }finally{await browser.close();}
-console.log('PASS: both versions render in Chromium and isolated override is confined to test page; interactive facial-motion review remains necessary');
+console.log(failures?'FAIL '+failures+' checks':'PASS: original preserved, isolated Anđela mapping and dialogue verified');
+if(failures)process.exitCode=1;
