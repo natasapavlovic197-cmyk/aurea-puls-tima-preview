@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - 'architecture/**'
+      - 'netlify/functions/**'
       - 'rukovodilac/**'
       - 'locked/**'
       - 'v4-demo/**'
@@ -33,3 +34,5 @@ jobs:
       - run: node architecture/employee-rpc-adapter.test.mjs
       - run: node architecture/employee-server-gateway.test.cjs
       - run: node architecture/deployment-gate.test.cjs
+      - run: node architecture/supabase-manager-bridge.test.cjs
+      - run: node architecture/netlify-entrypoints.test.cjs
