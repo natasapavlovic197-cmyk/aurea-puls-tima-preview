@@ -45,3 +45,4 @@ jobs:
       - run: node architecture/staging-manager-service.test.cjs
       - run: node architecture/netlify-manager-wiring.test.cjs
       - run: node architecture/manager-deployment-preflight.test.cjs
+      - run: node architecture/netlify-manager-preflight.test.cjs
