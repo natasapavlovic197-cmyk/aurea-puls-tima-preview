@@ -3,6 +3,9 @@ on:
   push:
     paths:
       - 'architecture/**'
+      - 'rukovodilac/**'
+      - 'locked/**'
+      - 'v4-demo/**'
       - '.github/workflows/b2b-privacy-checks.yml'
   workflow_dispatch:
 jobs:
@@ -17,3 +20,5 @@ jobs:
       - run: node architecture/staging-engine.test.cjs
       - run: node architecture/weekly-orchestrator.test.cjs
       - run: node architecture/report-release.test.cjs
+      - run: node architecture/manager-rpc-adapter.test.mjs
+      - run: node architecture/master-lock.test.cjs
