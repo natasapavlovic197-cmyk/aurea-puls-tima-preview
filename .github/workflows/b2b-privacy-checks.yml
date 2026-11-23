@@ -14,3 +14,4 @@ jobs:
         with:
           node-version: '22'
       - run: node architecture/privacy-guard.test.cjs
+      - run: node architecture/staging-engine.test.cjs
