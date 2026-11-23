@@ -1,0 +1,23 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {createManagerSummaryHandler}=require('./manager-summary-boundary.cjs');
+const orgA='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',orgB='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const event=id=>({httpMethod:'GET',queryStringParameters:{organization_id:id}});
+const publication={organizationId:orgA,week:'2026-11-23',immutable:true,privacyApproved:true,domains:{clarity:4.2,trust:3.8},employee:'MUST_NOT_LEAK',responseCount:5};
+(async()=>{
+ let reads=0;
+ const options={rateLimit:async()=>true,authenticate:async()=>({id:'managerA'}),authorize:async({organizationId})=>organizationId===orgA,readPublishedReport:async()=>{reads++;return publication}};
+ const handler=createManagerSummaryHandler(options);
+ assert.equal((await handler(event(orgB))).statusCode,403);
+ assert.equal(reads,0,'cross-tenant report never read');
+ const good=await handler(event(orgA));
+ assert.equal(good.statusCode,200);
+ assert.deepEqual(JSON.parse(good.body),{report:{week:'2026-11-23',domains:{clarity:4.2,trust:3.8}}});
+ assert.equal(good.body.includes('MUST_NOT_LEAK'),false);
+ assert.equal((await createManagerSummaryHandler({...options,authenticate:async()=>null})(event(orgA))).statusCode,401);
+ assert.equal((await createManagerSummaryHandler({...options,rateLimit:async()=>false})(event(orgA))).statusCode,429);
+ assert.equal((await createManagerSummaryHandler({...options,readPublishedReport:async()=>({...publication,privacyApproved:false})})(event(orgA))).statusCode,503);
+ assert.equal((await createManagerSummaryHandler({...options,readPublishedReport:async()=>({...publication,organizationId:orgB})})(event(orgA))).statusCode,503);
+ assert.equal((await createManagerSummaryHandler()(event(orgA))).statusCode,503);
+ console.log('PASS: manager authorization, tenant isolation, publication gate, safe output');
+})().catch(e=>{console.error(e);process.exitCode=1});
