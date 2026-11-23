@@ -21,7 +21,12 @@ function createManagerBridge({url,key,fetchImpl=globalThis.fetch}={}){
   const rows=await r.json();
   if(!Array.isArray(rows))throw new Error('Invalid summary response');
   // These are SQL-authenticated, thresholded, closed-cycle rows.
-  return rows.map(row=>{\n   const count=row.response_count;\n   const percent=row.favorable_percent;\n   if(typeof row.week_start!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(row.week_start)||typeof row.domain!=='string'||!row.domain||typeof row.question_code!=='string'||!row.question_code||!Number.isSafeInteger(Number(count))||Number(count)<5||percent===null||percent===undefined||percent===''||!Number.isFinite(Number(percent))||Number(percent)<0||Number(percent)>100)throw new Error('Invalid or non-private report');\n   return {week:row.week_start,domain:row.domain,question:row.question_code,favorablePercent:Number(percent)};\n  });
+  return rows.map(row=>{
+   const count=row.response_count;
+   const percent=row.favorable_percent;
+   if(typeof row.week_start!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(row.week_start)||typeof row.domain!=='string'||!row.domain||typeof row.question_code!=='string'||!row.question_code||!Number.isSafeInteger(Number(count))||Number(count)<5||percent===null||percent===undefined||percent===''||!Number.isFinite(Number(percent))||Number(percent)<0||Number(percent)>100)throw new Error('Invalid or non-private report');
+   return {week:row.week_start,domain:row.domain,question:row.question_code,favorablePercent:Number(percent)};
+  });
  }
  return Object.freeze({authenticate,readSummary});
 }
