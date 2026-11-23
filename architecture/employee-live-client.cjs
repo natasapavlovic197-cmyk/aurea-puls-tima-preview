@@ -19,7 +19,7 @@ function createEmployeeClient({token,fetchImpl=globalThis.fetch}={}){
  if(!questions||saved||busy)throw Error('Submission unavailable');
  if(!answers||Object.keys(answers).length!==6||questions.some(q=>!Number.isInteger(answers[q.code])||answers[q.code]<1||answers[q.code]>6))throw Error('Invalid answers');
  busy=true;
- try{const result=await call('submit',{answers:questions.map(q=>({code:q.code,rating:answers[q.code]}))});if(result.status!=='saved')throw Error('Submission not confirmed');saved=true;return true;}finally{busy=false;}
+ try{const result=await call('submit',{answers:questions.map(q=>({code:q.code,rating:answers[q.code]}))});if(result.status!=='submitted')throw Error('Submission not confirmed');saved=true;return true;}finally{busy=false;}
  }
  });
 }
