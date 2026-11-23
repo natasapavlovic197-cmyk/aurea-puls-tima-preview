@@ -8,7 +8,7 @@ function validAnswers(a){
  if(!Array.isArray(a)||a.length!==4)return false;
  const seen=new Set();
  for(const item of a){
-  if(!item||typeof item!=='object'||Array.isArray(item)||typeof item.code!=='string'||!CODE.test(item.code)||seen.has(item.code)||!Number.isInteger(item.rating)||item.rating<1||item.rating>6)return false;
+  if(!item||typeof item!=='object'||Array.isArray(item)||Object.keys(item).some(k=>!['code','rating'].includes(k))||typeof item.code!=='string'||!CODE.test(item.code)||seen.has(item.code)||!Number.isInteger(item.rating)||item.rating<1||item.rating>6)return false;
   seen.add(item.code);
  }
  return true;
