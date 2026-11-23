@@ -1,0 +1,11 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const root=path.join(__dirname,'..');
+const master=fs.readFileSync(path.join(root,'locked/manager-v35-approved.html'));
+const current=fs.readFileSync(path.join(root,'rukovodilac/index.html'));
+assert.deepEqual(current,master,'APPROVED MANAGER MASTER CHANGED: restore or obtain explicit approval before changing /rukovodilac/');
+const demo=fs.readFileSync(path.join(root,'v4-demo/index.html'),'utf8');
+assert.match(demo,/\/rukovodilac\//,'V4 demo must lead to approved manager experience');
+console.log('PASS: manager master identical, V4 demo routes to approved experience');
