@@ -6,8 +6,8 @@ Status: **BLOCKED / NOT DEPLOYABLE**. This is an evidence-backed gate, not a pro
 - Existing role `aurea_rate_limiter`: `rolcanlogin=false`, `rolbypassrls=false`, `rolinherit=false`.
 - `aurea_private` schema USAGE is granted to that role.
 - Of ten private application tables, only `api_rate_limits` has SELECT/INSERT/UPDATE grants for that role. All ten have RLS enabled.
-- The application currently insists on `current_user='aurea_rate_limiter'` before executing the exact counter query.
-- Therefore the current staging manager service cannot connect as configured. A successful unit test is **not** proof of live connectivity.
+- Historical note: the initial application expected a direct `aurea_rate_limiter` login. The current code now uses `aurea_limiter_login` with transaction-scoped `SET LOCAL ROLE aurea_rate_limiter`, checking both `session_user` and `current_user`.
+- The original NOLOGIN blocker has been addressed in code by the dedicated login, but it has no password. A successful unit test is **not** proof of live connectivity.
 
 ## Safe next implementation sequence
 1. Choose a restricted credential delivery method and validate Supabase's actual pooler endpoint/username/port/TLS certificate requirements. The current service hardcodes port 5432 and an `*.supabase.com` host check; do not assume it matches the selected pooler.
@@ -32,7 +32,7 @@ No Netlify deployment, TinyFish run, paid resource provisioning, secret mutation
 - Created earlier: `aurea_limiter_login` LOGIN role with **NULL password**, NOINHERIT, NOBYPASSRLS, no administrative powers.
 - Applied: `GRANT aurea_rate_limiter TO aurea_limiter_login WITH INHERIT FALSE, SET TRUE` (PostgreSQL 17).
 - Verified: membership `inherit_option=false`, `set_option=true`, `admin_option=false`; login still has **no direct USAGE** on `aurea_private` and **no direct INSERT** on the limiter table.
-- Intended flow: restricted SQL session connects as `aurea_limiter_login`, then explicitly `SET ROLE aurea_rate_limiter` and validates `current_user` before limiter upsert. **Current application does not yet implement this flow**, and the role has no password, so live connection remains disabled.
+- Intended flow: restricted SQL session connects as `aurea_limiter_login`, then explicitly `SET ROLE aurea_rate_limiter` and validates `current_user` before limiter upsert. **Current application implements this flow with `BEGIN` / `SET LOCAL ROLE` / identity check / allowlisted query / `COMMIT` and rollback on failure**, and the role has no password, so live connection remains disabled.
 - Do not configure a password via a chat transcript or commit. A server-side secret management plan, authenticated session identity test, and transaction/pool safety review are still required before enabling.
 
 ## Live activation checkpoint (2026-11-23)
@@ -42,3 +42,10 @@ No Netlify deployment, TinyFish run, paid resource provisioning, secret mutation
 - Remaining blocker: no secure end-to-end password provisioning and secret injection path has been established. Never pass credentials via SQL tool logs, GitHub commits, chat, or frontend. The current DB account is deliberately unusable until that is solved.
 - Keep Netlify manager deployment flags disabled and public endpoint fail-closed. Do not claim live manager integration or cross-tenant isolation until tested with two distinct authenticated organizations.
 - Next controlled test: configure secret in provider secret manager, verify TLS/pooler username/host, connect as dedicated login, execute BEGIN/SET LOCAL ROLE/identity/allowlisted limiter UPSERT/COMMIT; confirm unauthorized tables denied; test invalid JWT, cross-tenant access, minimum aggregation threshold, concurrent limiter requests and outage fail-closed.
+
+## Netlify configuration inspected (2026-11-23)
+- Signed-in browser inspection confirmed the **preview site only** supports Environment variables with `Contains secret values` and **Functions-only** scope; there were zero environment variables on that site at inspection.
+- No environment variables or passwords were written. Auto publishing remains locked.
+- For this app, required server-only keys: `AUREA_STAGING_DATABASE_HOST`, `AUREA_STAGING_DATABASE_NAME`, `AUREA_STAGING_DATABASE_USER`, `AUREA_STAGING_DATABASE_PASSWORD`, `AUREA_LIMITER_SECRET`, `AUREA_SUPABASE_URL`, `AUREA_SUPABASE_PUBLISHABLE_KEY`. The last two are not secret credentials but should be scoped appropriately.
+- **Critical:** Netlify secrets alone do not provision a PostgreSQL password. Provision the password via an authenticated, provider-controlled secret-safe workflow that does not transmit the plaintext through chat, tool transcripts, browser automation logs, or repository commits. Only then configure matching Netlify Functions-scoped secret values.
+- Explicit activation flags must remain unset or false until successful live tests and a separate release approval. No Netlify deployment or paid browser run is required for the current documentation checkpoint.
