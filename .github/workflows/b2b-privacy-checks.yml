@@ -1,6 +1,11 @@
 name: AUREA B2B privacy unit checks
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'architecture/**'
+      - '.github/workflows/b2b-privacy-checks.yml'
 jobs:
   privacy:
     runs-on: ubuntu-latest
