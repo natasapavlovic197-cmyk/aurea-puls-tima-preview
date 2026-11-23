@@ -1,0 +1,22 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {validatePulse,createPulseSubmitHandler}=require('./pulse-submit-boundary.cjs');
+const token='a'.repeat(64);
+const answers=[1,2,3,4].map((i)=>({question_id:`00000000-0000-4000-8000-${String(i).padStart(12,'0')}`,rating:i}));
+const event=(body)=>({httpMethod:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+(async()=>{
+ assert.equal(validatePulse({token,answers}),true);
+ assert.equal(validatePulse({token,answers:[...answers.slice(0,3),answers[0]]}),false);
+ assert.equal(validatePulse({token,answers:answers.map(x=>({...x,rating:6}))}),false);
+ assert.equal((await createPulseSubmitHandler()(event({token,answers}))).statusCode,503,'no adapter stays closed');
+ let calls=0;
+ const adapter={submitPulse:async(t,a)=>{assert.equal(t,token);assert.equal(a.length,4);calls++}};
+ assert.equal((await createPulseSubmitHandler({adapter,rateLimit:async()=>false})(event({token,answers}))).statusCode,429);
+ assert.equal(calls,0);
+ assert.equal((await createPulseSubmitHandler({adapter,rateLimit:async()=>true})(event({token,answers}))).statusCode,200);
+ assert.equal(calls,1);
+ assert.equal((await createPulseSubmitHandler({adapter,rateLimit:async()=>{throw Error('limiter offline')}})(event({token,answers}))).statusCode,400);
+ assert.equal(calls,1);
+ assert.equal((await createPulseSubmitHandler({adapter,rateLimit:async()=>true})({...event({token,answers}),httpMethod:'GET'})).statusCode,405);
+ console.log('PASS: server pulse boundary validates, rate-limits, and fails closed');
+})().catch(e=>{console.error(e);process.exitCode=1});
