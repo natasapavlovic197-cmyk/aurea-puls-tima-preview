@@ -1,0 +1,90 @@
+name: Anđela final fix — branch-only Chromium gate
+on:
+  push:
+    branches:
+      - qa/andjela-mimika-20261123
+    paths:
+      - .github/workflows/andjela-final-staging.yml
+  workflow_dispatch:
+jobs:
+  verify-and-commit:
+    if: github.ref == 'refs/heads/qa/andjela-mimika-20261123'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply minimal Anđela changes in staging working tree only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,re
+          orig=Path('kringle/index.html')
+          iso=Path('kringle-andjela-test/index.html')
+          a=orig.read_text(encoding='utf8')
+          b=iso.read_text(encoding='utf8')
+          raw=a.encode('utf8')
+          sha=hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()
+          assert sha=='86303e79bd6705f23c24f8d3d2a8f4d8b0f23943', 'Original branch differs from pinned approved Kringle'
+          m=re.search(r'<style id="aurea-andjela-no-hologram-test">[\s\S]*?</style>',b)
+          assert m and b.replace(m.group(0),'')==a, 'Isolated file is not an exact original + CSS test patch'
+          anchor="  shot.dataset.pose = pose;\n  if (!current || immediate || reducedMotion.matches || !shot.animate) {"
+          replacement="""  shot.dataset.pose = pose;
+            if (speaker === 'andjela') {
+              // One opaque, full-resolution face at a time: no overlapping translucent portraits.
+              // Keep the existing approved 3-frame photographic sprite and narrative choices.
+              shot.dataset.emotion = emotion;
+              stage.replaceChildren(shot);
+              if (!immediate && !reducedMotion.matches && !document.hidden && portrait.animate) {
+                portrait.getAnimations().forEach(animation => animation.cancel());
+                portrait.animate([
+                  { transform: 'translate3d(0,0,0)' },
+                  { transform: 'translate3d(.30%,-.18%,0)' },
+                  { transform: 'translate3d(0,0,0)' }
+                ], { duration: 4000, easing: 'ease-in-out', iterations: 1 });
+              }
+              return;
+            }
+            if (!current || immediate || reducedMotion.matches || !shot.animate) {"""
+          assert a.count(anchor)==1, 'Anđela transition anchor must appear exactly once'
+          a=a.replace(anchor,replacement,1)
+          old="if(shot){shot.dataset.emotion=names[index%names.length];btn.textContent="
+          new="if(shot){const emotion=names[index%names.length];const poses={attentive:'listening',concerned:'speaking',skeptical:'reflecting',surprised:'speaking',relieved:'listening',reflecting:'reflecting'};shot.dataset.pose=poses[emotion];shot.dataset.emotion=emotion;btn.textContent="
+          assert a.count(old)==1, 'Six-label test button anchor must appear exactly once'
+          a=a.replace(old,new,1)
+          # Preserve original and test page as identical experiences except for the test-only CSS override.
+          newb=a.replace('</head>',m.group(0)+'</head>',1)
+          assert newb.replace(m.group(0),'')==a
+          assert len(a.encode('utf8'))>3_000_000
+          orig.write_text(a,encoding='utf8')
+          iso.write_text(newb,encoding='utf8')
+          print('PASS: one-face-only Anđela scene and six label -> three actual photo frames, test-only isolated CSS retained')
+          PY
+      - name: Install isolated Chromium QA
+        run: |
+          npm install --no-save --no-package-lock playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: Test pixels, three existing photographs, six semantic states and real dialogue
+        run: node architecture/andjela-browser-qa.mjs
+      - name: Upload QA screenshots and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: andjela-final-branch-qa
+          path: artifacts/andjela-qa/
+          retention-days: 7
+      - name: Commit staging files only after passing browser QA
+        if: success()
+        run: |
+          git diff --check
+          git config user.name "AUREA QA Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kringle/index.html kringle-andjela-test/index.html
+          git diff --cached --quiet && exit 0
+          git commit -m "Stabilize Anđela 3-frame portrait transitions without ghosting (staging only)"
+          git push
