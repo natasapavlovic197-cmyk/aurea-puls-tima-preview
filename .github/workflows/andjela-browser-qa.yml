@@ -1,6 +1,10 @@
 name: Anđela isolated browser visual QA
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/andjela-browser-qa.yml'
+      - 'architecture/andjela-browser-qa.mjs'
 jobs:
   visual:
     runs-on: ubuntu-latest
