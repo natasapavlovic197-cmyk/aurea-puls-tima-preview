@@ -1,5 +1,5 @@
 'use strict';
-const {domains,weeklyItems}=require('./psychometric-item-bank.cjs');
+const {domains}=require('./psychometric-item-bank.cjs');
 const {analyzeItemSeries}=require('./item-aware-trends.cjs');
 const DOMAIN_LABELS=Object.freeze({
  role_clarity:'Jasnoća uloge',communication:'Komunikacija',workload:'Obim posla',
@@ -11,6 +11,7 @@ const DOMAIN_LABELS=Object.freeze({
 // Input must be privacy-cleared item-level aggregates, never individual responses.
 // This adapter does not query a database or turn illustrative data into live data.
 function buildManagerTenDomainView(rows,opts={}){
+ if(!Array.isArray(rows))throw new TypeError('Expected aggregate rows');
  const items=analyzeItemSeries(rows,opts);
  const byDomain=new Map(domains.map(domain=>[domain,[]]));
  for(const item of items)byDomain.get(item.domain).push(item);
