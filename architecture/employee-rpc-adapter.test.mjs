@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {employeeClient} from './employee-rpc-adapter.mjs';
+const hash='a'.repeat(64);
+const answers=['J1','K1','O1','P1'].map((code,i)=>({code,rating:i+1}));
+const calls=[];
+const client={rpc:async(name,args)=>{
+ calls.push({name,args});
+ if(name==='aurea_employee_invitation')return {data:{status:'ready',questions:answers.map((a,i)=>({code:a.code,wording:'Pitanje '+i,position:i+1,recipient_address:'never expose'}))}};
+ return {data:{status:'submitted'}};
+}};
+const employee=employeeClient(client,hash);
+const invitation=await employee.invitation();
+assert.equal(invitation.status,'ready');
+assert.equal(invitation.questions.length,4);
+assert.equal(JSON.stringify(invitation).includes('recipient_address'),false);
+assert.deepEqual(await employee.submit(answers),{status:'submitted'});
+assert.equal(calls[0].name,'aurea_employee_invitation');
+assert.equal(calls[1].name,'aurea_employee_submit');
+assert.deepEqual(calls[1].args,{p_hash:hash,p_answers:answers});
+await assert.rejects(()=>employee.submit([...answers.slice(0,3),answers[0]]),TypeError);
+await assert.rejects(()=>employee.submit(answers.map(a=>({...a,rating:7}))),TypeError);
+assert.equal(calls.length,2,'invalid answers must not reach RPC');
+const replay=employeeClient({rpc:async()=>({data:{status:'unavailable'}})},hash);
+assert.deepEqual(await replay.submit(answers),{status:'unavailable'});
+assert.throws(()=>employeeClient(client,'bad'),TypeError);
+console.log('PASS: real public employee RPC signatures, strict four answers, safe response shaping');
