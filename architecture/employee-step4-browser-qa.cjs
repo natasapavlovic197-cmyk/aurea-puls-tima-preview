@@ -2,7 +2,7 @@
 const {chromium}=require('playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {anchors,rotation,domains,weeklyItems}=require('./psychometric-item-bank.cjs');
-const file=path.resolve(__dirname,'employee-six-question-preview.html');
+const file=path.resolve(__dirname,process.env.AUREA_EMPLOYEE_FILE||'employee-six-question-preview.html');
 const out=path.resolve(__dirname,'../artifacts/employee-step4');
 fs.mkdirSync(out,{recursive:true});
 (async()=>{
