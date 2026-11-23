@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/manager-smoke.yml'
       - 'rukovodilac/index.html'
+      - '.github/tests/manager-smoke.cjs'
   workflow_dispatch:
 jobs:
   manager-smoke:
