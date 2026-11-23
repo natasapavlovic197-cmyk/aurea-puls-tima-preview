@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'architecture/manager-action-plan.cjs'
+      - 'architecture/manager-step6-browser-qa.cjs'
+      - 'rukovodilac/index.html'
       - 'architecture/manager-action-plan.test.cjs'
       - 'architecture/manager-interventions.cjs'
       - '.github/workflows/manager-step6-qa.yml'
@@ -18,3 +20,7 @@ jobs:
         with:
           node-version: '22'
       - run: node --test architecture/manager-action-plan.test.cjs
+      - run: |
+          npm install --no-save --no-package-lock playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - run: node architecture/manager-step6-browser-qa.cjs
