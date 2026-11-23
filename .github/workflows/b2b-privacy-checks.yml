@@ -43,3 +43,4 @@ jobs:
       - run: node architecture/manager-runtime.test.cjs
       - run: node architecture/restricted-pg-query.test.cjs
       - run: node architecture/staging-manager-service.test.cjs
+      - run: node architecture/netlify-manager-wiring.test.cjs
