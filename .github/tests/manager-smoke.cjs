@@ -69,6 +69,16 @@ const path = require('path');
   await assert(await page.locator('#next').isDisabled(),'employee restart clears answers');
   await page.locator('#week').selectOption('2');
   await assert((await page.locator('#employee').innerText()).includes('Nedelja 2'),'employee week selector');
+  await page.goto(pathToFileURL(path.resolve('odgovor/index.html')).href);
+  await assert((await page.locator('#content').innerText()).includes('Potreban je pristupni link'),'real employee form rejects missing invitation');
+  await assert(await page.locator('#content input').count()===0,'no survey without valid token');
+  await page.goto(pathToFileURL(path.resolve('portal/index.html')).href);
+  await assert(await page.locator('#private').isHidden(),'manager private panel hidden before login');
+  await page.locator('#login').click();
+  await assert((await page.locator('#status').innerText()).includes('Unesite adresu i lozinku'),'manager login validates missing credentials');
+  await assert(await page.locator('#private').isHidden(),'private panel remains hidden after invalid login');
+  await page.locator('#reset').click();
+  await assert((await page.locator('#status').innerText()).includes('Unesite svoju e-adresu'),'password reset validates email');
   await assert(errors.length===0,'no JavaScript page errors: '+errors.join(' | '));
   console.log('ALL MOBILE SMOKE TESTS PASSED');
  }catch(e){console.error('FAILED',e.stack);console.error('BROWSER ERRORS',errors);process.exitCode=1}
