@@ -1,0 +1,20 @@
+name: AUREA manager mobile smoke test
+on:
+  push:
+    paths:
+      - '.github/workflows/manager-smoke.yml'
+      - 'rukovodilac/index.html'
+  workflow_dispatch:
+jobs:
+  manager-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - name: Test fictional manager flow on mobile
+        run: node .github/tests/manager-smoke.cjs
