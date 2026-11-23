@@ -3,6 +3,7 @@ on:
   push:
     branches: [integration/employee-ten-domains-step5]
     paths:
+      - 'architecture/**'
       - '.github/workflows/manager-staging-build.yml'
   pull_request:
     paths:
@@ -21,6 +22,8 @@ jobs:
           node-version: '22'
       - run: npm install --no-save --ignore-scripts esbuild@0.25.5 @supabase/supabase-js@2.49.4
       - run: node architecture/build-staging-manager.cjs
+      - name: Verify employee and manager bundle files
+        run: test -s dist-staging-manager/employee.html && test -s dist-staging-manager/employee.bundle.js && test -s dist-staging-manager/manager-login.bundle.js
       - uses: actions/upload-artifact@v4
         with:
           name: aurea-manager-staging
