@@ -34,6 +34,23 @@ function createManagerBridge({url,key,fetchImpl=globalThis.fetch}={}){
   if(!r.ok)throw new Error('Publication denied');
   return require('./publication-row-adapter.cjs').normalizePublications(await r.json());
  }
- return Object.freeze({authenticate,readSummary,readAuthorizedPublications});
+ async function actionRpc(name,token,organizationId,params={}){
+  if(!UUID.test(organizationId)||typeof token!=='string'||!token)throw new TypeError('Invalid activity request');
+  const r=await fetchImpl(url+'/rest/v1/rpc/'+name,{method:'POST',headers:headers(token),body:JSON.stringify({...params,p_organization_id:organizationId}),signal:AbortSignal.timeout(7000)});
+  if(!r.ok)throw new Error('Activity request denied');
+  return r.json();
+ }
+ async function readActions({token,organizationId}){
+  const rows=await actionRpc('aurea_manager_actions',token,organizationId);
+  if(!Array.isArray(rows)||rows.length>100||rows.some(a=>!a||!UUID.test(a.id)||typeof a.description!=='string'||!['open','done','in_progress','cancelled'].includes(a.status)))throw new Error('Invalid activities');
+  return rows;
+ }
+ async function saveAction({token,organizationId,description,dueOn=null,cycleId=null,actionId=null,status='open'}){
+  if(typeof description!=='string'||description.trim().length<3||description.trim().length>2000||!['open','done'].includes(status)||(actionId!==null&&!UUID.test(actionId))||(cycleId!==null&&!UUID.test(cycleId))||(dueOn!==null&&(typeof dueOn!=='string'||!/^\\d{4}-\\d{2}-\\d{2}$/.test(dueOn))))throw new TypeError('Invalid activity');
+  const id=await actionRpc('aurea_manager_save_action',token,organizationId,{p_description:description.trim(),p_due_on:dueOn,p_cycle_id:cycleId,p_action_id:actionId,p_status:status});
+  if(typeof id!=='string'||!UUID.test(id))throw new Error('Invalid saved activity');
+  return id;
+ }
+ return Object.freeze({authenticate,readSummary,readAuthorizedPublications,readActions,saveAction});
 }
 module.exports={createManagerBridge};
