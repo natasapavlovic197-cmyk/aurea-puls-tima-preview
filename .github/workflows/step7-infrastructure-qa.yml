@@ -8,6 +8,8 @@ on:
       - 'architecture/supabase-manager-bridge.cjs'
       - 'architecture/manager-activity-bridge.test.cjs'
       - 'architecture/manager-authorized-service*.cjs'
+      - 'architecture/manager-workspace-endpoint*.cjs'
+      - 'architecture/manager-runtime.cjs'
       - 'architecture/weekly-cycle-planner*.cjs'
       - '.github/workflows/step7-infrastructure-qa.yml'
 jobs:
@@ -20,4 +22,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test architecture/published-manager-report.test.cjs architecture/published-report-endpoint.test.cjs architecture/weekly-cycle-planner.test.cjs architecture/publication-row-adapter.test.cjs architecture/manager-activity-bridge.test.cjs architecture/manager-authorized-service.test.cjs
+      - run: node --test architecture/published-manager-report.test.cjs architecture/published-report-endpoint.test.cjs architecture/weekly-cycle-planner.test.cjs architecture/publication-row-adapter.test.cjs architecture/manager-activity-bridge.test.cjs architecture/manager-authorized-service.test.cjs architecture/manager-workspace-endpoint.test.cjs
