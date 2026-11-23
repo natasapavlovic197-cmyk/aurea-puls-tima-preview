@@ -62,3 +62,8 @@ No Netlify deployment, TinyFish run, paid resource provisioning, secret mutation
 - Expanded service unit tests to reject false or missing deployment approval. This is a defense against accidental activation, not a live integration test.
 - GitHub CI is currently manual-only. The new test changes have **not** been executed by CI. An attempt to clone for local execution was blocked by this runtime's DNS/network access; do not mark tests green until independently run.
 - Activation flags remain unset on the preview site. No deployment, credentials, or billing change.
+
+## Preflight hardening (2026-11-23)
+- Deployment preflight now rejects database hosts outside the expected `*.supabase.com` suffix, malformed database hostnames, empty/whitespace-only database names, and Supabase API URLs not matching the HTTPS project domain. Regression cases include attacker-controlled lookalike domains.
+- Corresponding preflight regression test passed under Node.js in an isolated local copy of the updated module and test. **Full repository GitHub Actions suite was not executed** (manual-only workflow); no live credentials or database connection were involved.
+- No deploy, TinyFish, or Netlify changes. Remain blocked on secure credential provisioning, actual connection test, tenant-isolation verification, driver pinning, and explicit release approval.
