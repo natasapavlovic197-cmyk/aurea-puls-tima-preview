@@ -55,9 +55,9 @@ const fs = require('fs');
   await page.locator('#v35status').click();
   await assert((await page.locator('#manager').innerText()).includes('Završeno'),'status updated');
   await page.goto(pathToFileURL(path.resolve('index.html')).href);
-  await assert(await page.locator('a[href="/zaposleni/"]').count()===1,'landing links to employee demo');
-  await assert(await page.locator('a[href="/rukovodilac/"]').count()===1,'landing links to manager demo');
-  await assert(await page.locator('a[href="/portal/"]').count()===1,'landing links to secure portal');
+  await assert(await page.locator('a[href="./zaposleni/"]').count()===1,'landing links to employee demo');
+  await assert(await page.locator('a[href="./rukovodilac/"]').count()===1,'landing links to manager demo');
+  await assert(await page.locator('a[href="./portal/"]').count()===0,'staging portal is not exposed on public demo landing');
   await page.goto(pathToFileURL(path.resolve('zaposleni/index.html')).href);
   await assert(await page.locator('#next').isDisabled(),'employee cannot continue unanswered');
   await page.waitForTimeout(1400); // Let entry animations finish before visual capture
@@ -72,6 +72,8 @@ const fs = require('fs');
    }
    await page.locator('#next').click();
   }
+  await assert(await page.locator('#optionalFinish').isVisible(),'optional employee reflection after four answers');
+  await page.locator('#optionalSkip').click();
   await assert(await page.locator('.aurea-finale').isVisible(),'employee completion');
   await page.locator('#again').click();
   await assert(await page.locator('#next').isDisabled(),'employee restart clears answers');
