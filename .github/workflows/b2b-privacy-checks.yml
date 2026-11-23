@@ -25,6 +25,7 @@ jobs:
       - run: node architecture/report-release.test.cjs
       - run: node architecture/manager-rpc-adapter.test.mjs
       - run: node architecture/master-lock.test.cjs
+      - run: node architecture/release-candidate-static.test.cjs
       - run: node architecture/portal-security.test.cjs
       - run: node architecture/manager-workspace.test.cjs
       - run: node architecture/pulse-submit-boundary.test.cjs
