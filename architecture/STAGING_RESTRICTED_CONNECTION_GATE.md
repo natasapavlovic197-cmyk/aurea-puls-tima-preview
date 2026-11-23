@@ -56,3 +56,9 @@ No Netlify deployment, TinyFish run, paid resource provisioning, secret mutation
 - This is consistent with intentionally exposed authenticated manager APIs, **but does not establish tenant isolation**. Before launch, run adversarial authenticated tests for organization membership, forged organization IDs, unauthenticated calls, and minimum aggregation threshold. Review each SECURITY DEFINER body, its `auth.uid()` membership check, fixed search_path and table grants; avoid blanket REVOKE that would break intended APIs.
 - Advisor references: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable ; https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy ; https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
 - No SQL permissions, roles, Auth settings, credentials, deployments or billing were modified by this audit.
+
+## Dual approval gate corrected (2026-11-23)
+- Corrected `staging-manager-service.cjs`: before creating a database pool, it now requires **both** `AUREA_B2B_MANAGER_ENABLED=true` and `AUREA_B2B_MANAGER_DEPLOY_APPROVED=true`, consistent with `manager-deployment-preflight.cjs`.
+- Expanded service unit tests to reject false or missing deployment approval. This is a defense against accidental activation, not a live integration test.
+- GitHub CI is currently manual-only. The new test changes have **not** been executed by CI. An attempt to clone for local execution was blocked by this runtime's DNS/network access; do not mark tests green until independently run.
+- Activation flags remain unset on the preview site. No deployment, credentials, or billing change.
