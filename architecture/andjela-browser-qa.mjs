@@ -1,44 +1,66 @@
 import {chromium} from 'playwright';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
-const out=resolve('artifacts/andjela-qa');
-await mkdir(out,{recursive:true});
+import {createHash} from 'node:crypto';
+const dir=resolve('artifacts/andjela-qa');
+await mkdir(dir,{recursive:true});
+const emotions=['attentive','concerned','skeptical','surprised','relieved','reflecting'];
+const expectedPose=['listening','speaking','reflecting','speaking','listening','reflecting'];
+let failures=0;
 const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
-try{
- for(const [name,path] of [['original','kringle/index.html'],['isolated','kringle-andjela-test/index.html']]){
-  const page=await browser.newPage({viewport:{width:1280,height:800},deviceScaleFactor:1});
-  const errors=[];
-  page.on('pageerror',e=>errors.push(e.message));
-  await page.goto('file://'+resolve(path),{waitUntil:'domcontentloaded',timeout:45000});
-  await page.screenshot({path:resolve(out,name+'-initial.png'),fullPage:false,timeout:30000});
-  const info=await page.evaluate(()=>{
-   const node=document.querySelector('.portrait-andjela');
-   const frame=node?.querySelector('.portrait-frame');
-   const style=frame?getComputedStyle(frame):null;
-   return {title:document.title,portraitPresent:!!node,portraitVisible:!!node&&node.getBoundingClientRect().width>0,framePresent:!!frame,backgroundSize:style?.backgroundSize||null,patchPresent:!!document.getElementById('aurea-andjela-no-hologram-test')};
+const results=[];
+try {
+ for(const [version,path] of [['original','kringle/index.html'],['isolated','kringle-andjela-test/index.html']]){
+  const page=await browser.newPage({viewport:{width:1280,height:850},deviceScaleFactor:1,reducedMotion:'reduce'});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const nameResults=[];
+  await page.goto('file://'+resolve(path)+'?pregled=andjela&andjela-test=1',{waitUntil:'load',timeout:45000});
+  await page.waitForFunction(()=>document.getElementById('exercise-portrait')?.dataset.speaker==='andjela',null,{timeout:20000});
+  const btn=page.getByRole('button',{name:/Proveri Anđeline izraze|Anđela:/});
+  await btn.waitFor({timeout:10000});
+  const initial=await page.evaluate(()=>{
+   const p=document.querySelector('#exercise-portrait'),s=p?.querySelector('.portrait-shot:last-child'),f=s?.querySelector('.portrait-frame');
+   return {speaker:p?.dataset.speaker,pose:s?.dataset.pose,background:f?getComputedStyle(f).backgroundPosition:null,visible:!!f&&p.getBoundingClientRect().width>0};
   });
-  console.log(JSON.stringify({name,...info,pageErrors:errors.slice(0,8)}));
-  if(name==='original'&&info.patchPresent)throw Error('Original unexpectedly patched');
-  if(name==='isolated'&&!info.patchPresent)throw Error('Isolated patch missing');
-  // Inspect available entry controls without changing app state or approved design.
-  const entry=await page.locator('button, a, [role="button"]').evaluateAll(nodes=>nodes.filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0}).slice(0,25).map(n=>({tag:n.tagName,text:(n.textContent||'').trim().slice(0,90),href:n.getAttribute('href')})));
-  console.log(JSON.stringify({name,visibleEntryControls:entry}));
-  // Enter the actual demonstration and record the first interactive state.
-  await page.getByRole('button',{name:'Pokrenite demonstraciju'}).click({timeout:10000});
-  await page.waitForTimeout(900);
-  const afterEntry=await page.evaluate(()=>{
-    const node=document.querySelector('.portrait-andjela');
-    const frame=node?.querySelector('.portrait-frame');
-    const r=node?.getBoundingClientRect();
-    const style=frame?getComputedStyle(frame):null;
-    return {portraitPresent:!!node,portraitVisible:!!r&&r.width>0&&r.height>0,framePresent:!!frame,backgroundPosition:style?.backgroundPosition||null,backgroundSize:style?.backgroundSize||null,visibleButtons:[...document.querySelectorAll('button')].filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0}).slice(0,20).map(n=>(n.textContent||'').trim().slice(0,80))};
-  });
-  console.log(JSON.stringify({name,afterEntry,pageErrors:errors.slice(0,8)}));
-  await page.screenshot({path:resolve(out,name+'-after-entry.png'),fullPage:false,timeout:30000});
-  if(errors.length)throw Error(name+' has browser JavaScript errors after entering demo: '+errors.length);
-  // The character may be introduced later in the scenario; don't claim facial
-  // animation is validated just because the demonstration entry works.
+  for(let i=0;i<emotions.length;i++){
+   await btn.click();
+   await page.waitForTimeout(180);
+   const info=await page.evaluate(()=>{
+    const p=document.querySelector('#exercise-portrait'),s=p?.querySelector('.portrait-stage .portrait-shot:last-child'),f=s?.querySelector('.portrait-frame');
+    const css=f?getComputedStyle(f):null;
+    return {speaker:p?.dataset.speaker,emotion:s?.dataset.emotion,pose:s?.dataset.pose,layers:p?.querySelectorAll('.portrait-stage .portrait-shot').length,
+      position:css?.backgroundPosition,size:css?.backgroundSize,image:css?.backgroundImage!=='none',
+      visible:!!s&&s.getBoundingClientRect().width>0&&s.getBoundingClientRect().height>0};
+   });
+   const bytes=await page.locator('#exercise-portrait').screenshot({path:resolve(dir,version+'-'+String(i+1).padStart(2,'0')+'-'+emotions[i]+'.png'),animations:'disabled'});
+   const hash=createHash('sha256').update(bytes).digest('hex');
+   const ok=info.speaker==='andjela'&&info.emotion===emotions[i]&&info.pose===expectedPose[i]&&info.visible&&info.image&&info.layers===1;
+   if(!ok)failures++;
+   nameResults.push({expected:emotions[i],expectedPose:expectedPose[i],pass:ok,pixelsHash:hash.slice(0,14),...info});
+  }
+  const distinctPixels=new Set(nameResults.map(x=>x.pixelsHash)).size;
+  const distinctPositions=new Set(nameResults.map(x=>x.position)).size;
+  // There are THREE approved photographed expressions. Six names must select them correctly.
+  if(distinctPixels<3||distinctPositions<3)failures++;
+  await page.goto('file://'+resolve(path)+'?pregled=andjela',{waitUntil:'load',timeout:45000});
+  await page.waitForFunction(()=>document.getElementById('exercise-portrait')?.dataset.speaker==='andjela',null,{timeout:15000});
+  let realScene={};
+  const choice=page.locator('#exercise-options .exercise-choice').first();
+  if(await choice.isVisible()){
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    await choice.click();await page.waitForTimeout(500);
+    realScene=await page.evaluate(()=>{
+     const p=document.querySelector('#exercise-portrait'),ss=[...p.querySelectorAll('.portrait-stage .portrait-shot')];
+     return {layers:ss.length,pose:ss.at(-1)?.dataset.pose,visible:!!ss.at(-1)&&ss.at(-1).getBoundingClientRect().width>0};
+    });
+    await page.locator('#exercise-portrait').screenshot({path:resolve(dir,version+'-dialogue.png'),animations:'allow'});
+    if(realScene.layers!==1)failures++;
+  }else {realScene={error:'No visible dialogue choice'};failures++}
+  if(errors.length)failures++;
+  const summary={version,initial,distinctPixels,distinctPositions,realScene,errors,expressions:nameResults};
+  results.push(summary);console.log(JSON.stringify(summary));
   await page.close();
  }
-}finally{await browser.close();}
-console.log('PASS: both versions render in Chromium and isolated override is confined to test page; interactive facial-motion review remains necessary');
+}finally{await browser.close()}
+if(failures)throw new Error('Anđela QA: '+failures+' FAILED checks; see artifacts and JSON output. Six labels do NOT imply six photographic assets.');
+console.log('PASS: 6 named states mapped to three distinct original photographs, exactly one visible portrait layer, real dialogue interactive, no browser JS errors. Aesthetic judgement still needs human screenshot review.');
