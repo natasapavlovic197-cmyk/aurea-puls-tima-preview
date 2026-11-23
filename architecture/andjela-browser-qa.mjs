@@ -20,6 +20,9 @@ try{
   console.log(JSON.stringify({name,...info,pageErrors:errors.slice(0,8)}));
   if(name==='original'&&info.patchPresent)throw Error('Original unexpectedly patched');
   if(name==='isolated'&&!info.patchPresent)throw Error('Isolated patch missing');
+  // Inspect available entry controls without changing app state or approved design.
+  const entry=await page.locator('button, a, [role="button"]').evaluateAll(nodes=>nodes.filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0}).slice(0,25).map(n=>({tag:n.tagName,text:(n.textContent||'').trim().slice(0,90),href:n.getAttribute('href')})));
+  console.log(JSON.stringify({name,visibleEntryControls:entry}));
   // The portrait may appear only after entering the exercise; don't mistake
   // an initially hidden portrait for a failed animation.
   await page.close();
