@@ -8,6 +8,8 @@ async function main(){
  fs.copyFileSync(path.join(__dirname,'staging-manager/index.html'),path.join(out,'index.html'));
  fs.copyFileSync(path.join(__dirname,'manager-login.css'),path.join(out,'manager-login.css'));
  await esbuild.build({entryPoints:[path.join(__dirname,'staging-manager-entry.cjs')],bundle:true,platform:'browser',format:'iife',outfile:path.join(out,'manager-login.bundle.js'),minify:true});
- for(const file of ['index.html','manager-login.css','manager-login.bundle.js'])if(!fs.statSync(path.join(out,file)).size)throw Error('Empty artifact');
+ fs.copyFileSync(path.join(__dirname,'staging-manager/employee.html'),path.join(out,'employee.html'));
+ await esbuild.build({entryPoints:[path.join(__dirname,'employee-staging-entry.cjs')],bundle:true,platform:'browser',format:'iife',outfile:path.join(out,'employee.bundle.js'),minify:true});
+ for(const file of ['index.html','manager-login.css','manager-login.bundle.js','employee.html','employee.bundle.js'])if(!fs.statSync(path.join(out,file)).size)throw Error('Empty artifact');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
