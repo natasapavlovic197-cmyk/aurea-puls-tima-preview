@@ -1,0 +1,21 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {createRestrictedEmployeeAdapter}=require('./restricted-employee-adapter.cjs');
+const hash='a'.repeat(64),answers=['J1','K1','O1','P1'].map(code=>({code,rating:4}));
+(async()=>{
+ let queries=[],releases=0,login='aurea_employee_login';
+ const pool={async connect(){return {async query(sql,params){queries.push([sql,params]);if(sql.includes('session_user as login_user'))return {rows:[{login_user:login,active_user:login,superuser:false,bypassrls:false}]};return {rows:[{result:sql.includes('invitation')?{status:'ready',questions:[]}:{status:'submitted'}}]};},release(discard){assert.equal(discard,true);releases++}}}};
+ const adapter=createRestrictedEmployeeAdapter({pool});
+ assert.equal((await adapter.invitation(hash)).status,'ready');
+ assert.equal((await adapter.submit(hash,answers)).status,'submitted');
+ assert.equal(queries.filter(x=>x[0].includes('public.aurea_employee_')).length,2);
+ assert.deepEqual(queries.filter(x=>x[0].includes('public.aurea_employee_')).map(x=>x[1][0]),[hash,hash]);
+ assert.equal(releases,2);
+ assert.throws(()=>adapter.submit(hash,answers.map(x=>({...x,email:'private'}))),TypeError);
+ assert.throws(()=>adapter.invitation('invalid'),TypeError);
+ login='postgres';
+ await assert.rejects(()=>adapter.invitation(hash),/Untrusted/);
+ assert.equal(queries.filter(x=>x[0].includes('public.aurea_employee_')).length,2);
+ assert.equal(releases,3);
+ console.log('PASS: employee-only SQL adapter enforces login, parameterized RPCs, strict payload and connection disposal');
+})().catch(e=>{console.error(e);process.exitCode=1});
