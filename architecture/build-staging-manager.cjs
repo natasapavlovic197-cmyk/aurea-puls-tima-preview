@@ -1,0 +1,13 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const esbuild=require('esbuild');
+async function main(){
+ const out=path.resolve('dist-staging-manager');
+ fs.mkdirSync(out,{recursive:true});
+ fs.copyFileSync(path.join(__dirname,'staging-manager/index.html'),path.join(out,'index.html'));
+ fs.copyFileSync(path.join(__dirname,'manager-login.css'),path.join(out,'manager-login.css'));
+ await esbuild.build({entryPoints:[path.join(__dirname,'staging-manager-entry.cjs')],bundle:true,platform:'browser',format:'iife',outfile:path.join(out,'manager-login.bundle.js'),minify:true});
+ for(const file of ['index.html','manager-login.css','manager-login.bundle.js'])if(!fs.statSync(path.join(out,file)).size)throw Error('Empty artifact');
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});
