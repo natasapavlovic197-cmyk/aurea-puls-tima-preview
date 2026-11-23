@@ -50,6 +50,7 @@ jobs:
       - run: node architecture/psychometric-item-bank.test.cjs
       - run: node architecture/item-aware-trends.test.cjs
       - run: node architecture/manager-interventions.test.cjs
+      - run: node architecture/manager-decision-workflow.test.cjs
       - run: node architecture/manager-runtime.test.cjs
       - run: node architecture/restricted-pg-query.test.cjs
       - run: node architecture/staging-manager-service.test.cjs
