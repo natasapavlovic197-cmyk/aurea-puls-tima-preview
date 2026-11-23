@@ -16,6 +16,7 @@ on:
       - 'architecture/weekly-delivery-*.cjs'
       - 'architecture/weekly-message-*.cjs'
       - 'architecture/weekly-recipient-*.cjs'
+      - 'architecture/weekly-report-*.cjs'
       - '.github/workflows/step7-infrastructure-qa.yml'
 jobs:
   test:
@@ -27,4 +28,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test architecture/published-manager-report.test.cjs architecture/published-report-endpoint.test.cjs architecture/weekly-cycle-planner.test.cjs architecture/publication-row-adapter.test.cjs architecture/manager-activity-bridge.test.cjs architecture/manager-authorized-service.test.cjs architecture/manager-workspace-endpoint.test.cjs architecture/manager-server-entry.test.cjs architecture/manager-session-adapter.test.cjs architecture/manager-company-selector.test.cjs architecture/manager-company-reader.test.cjs architecture/staging-manager-server.test.cjs architecture/employee-live-client.test.cjs architecture/employee-endpoint.test.cjs architecture/employee-http-integration.test.cjs architecture/employee-postgres-bridge.test.cjs architecture/limiter-role-query.test.cjs architecture/weekly-delivery-worker.test.cjs architecture/weekly-message-plan.test.cjs architecture/weekly-recipient-sender.test.cjs
+      - run: node --test architecture/published-manager-report.test.cjs architecture/published-report-endpoint.test.cjs architecture/weekly-cycle-planner.test.cjs architecture/publication-row-adapter.test.cjs architecture/manager-activity-bridge.test.cjs architecture/manager-authorized-service.test.cjs architecture/manager-workspace-endpoint.test.cjs architecture/manager-server-entry.test.cjs architecture/manager-session-adapter.test.cjs architecture/manager-company-selector.test.cjs architecture/manager-company-reader.test.cjs architecture/staging-manager-server.test.cjs architecture/employee-live-client.test.cjs architecture/employee-endpoint.test.cjs architecture/employee-http-integration.test.cjs architecture/employee-postgres-bridge.test.cjs architecture/limiter-role-query.test.cjs architecture/weekly-delivery-worker.test.cjs architecture/weekly-message-plan.test.cjs architecture/weekly-recipient-sender.test.cjs architecture/weekly-report-digest.test.cjs
