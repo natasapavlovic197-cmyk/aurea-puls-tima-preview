@@ -23,7 +23,7 @@ try{
     const shot=shots.at(-1), frame=shot?.querySelector('.portrait-frame');
     const css=frame?getComputedStyle(frame):null;
     const rect=p.getBoundingClientRect();
-    return {visible:rect.width>100&&rect.height>100,pose:shot?.dataset.pose||null,emotion:shot?.dataset.emotion||null,speaker:p.dataset.speaker,layers:shots.length,
+    return {width:rect.width,height:rect.height,visible:rect.width>100&&rect.height>100,pose:shot?.dataset.pose||null,emotion:shot?.dataset.emotion||null,speaker:p.dataset.speaker,layers:shots.length,
       backgroundPosition:css?.backgroundPosition||null,backgroundSize:css?.backgroundSize||null,hasImage:!!css?.backgroundImage&&css.backgroundImage!=='none'};
    });
    const btn=page.getByRole('button',{name:/^(Proveri Anđeline izraze|Anđela:)/});
@@ -50,9 +50,16 @@ try{
    await page.goto(real.toString(),{waitUntil:'load',timeout:45000});
    await page.waitForFunction(()=>document.getElementById('exercise-portrait')?.dataset.speaker==='andjela',null,{timeout:15000});
    const start=await state();
+   if(label==='isolated'){
+     const ratio=start.width/start.height;
+     console.log(JSON.stringify({label,phase:'initial-proportions',width:start.width,height:start.height,ratio}));
+     if(Math.abs(ratio-0.8)>0.015){console.error('FAIL: opening Anđela stretched by grid; expected 4:5');failures++;}
+     else console.log('PASS: opening Anđela photo retains true 4:5 aspect ratio');
+   }
    await page.locator('#exercise-options .exercise-choice').first().click({timeout:12000});
    await page.waitForFunction(()=>document.querySelector('#exercise-portrait .portrait-stage .portrait-shot:last-child')?.dataset.pose==='speaking',null,{timeout:12000});
    const after=await state();
+   if(label==='isolated'&&Math.abs(after.width/after.height-0.8)>0.015){console.error('FAIL: Anđela changes proportions during dialogue');failures++;}
    await page.locator('#exercise-portrait').screenshot({path:resolve(out,label+'-real-dialogue.png'),animations:'allow'});
    console.log(JSON.stringify({label,phase:'real-dialogue',start,after,errors}));
    if(label==='isolated'&&(!start.visible||!after.visible||start.pose!=='listening'||after.pose!=='speaking'||after.layers!==1||errors.length)){console.error('FAIL isolated real dialogue');failures++;}
