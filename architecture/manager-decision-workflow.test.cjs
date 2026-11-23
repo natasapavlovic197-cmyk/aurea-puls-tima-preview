@@ -1,0 +1,17 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {recommendInterventions}=require('./manager-interventions.cjs');
+const {prepareManagerDecision}=require('./manager-decision-workflow.cjs');
+const rec=recommendInterventions([{domain:'workload',itemCode:'A_WORKLOAD',itemVersion:1,latestWeek:'2026-11-23',latestFavorablePercent:30,persistentUnfavorable:true,observedCount:2}])[0];
+const accepted=prepareManagerDecision(rec,{decision:'accept',dueOn:'2026-12-07'});
+assert.equal(accepted.persist,true);
+assert.equal(accepted.action.status,'open');
+assert.equal(accepted.action.dueOn,'2026-12-07');
+assert.equal(accepted.source.itemCode,'A_WORKLOAD');
+const edited=prepareManagerDecision(rec,{decision:'edit',description:'Dogovoriti prioritete na sastanku'});
+assert.equal(edited.action.description,'Dogovoriti prioritete na sastanku');
+assert.equal(prepareManagerDecision(rec,{decision:'reject'}).persist,false);
+assert.throws(()=>prepareManagerDecision(rec,{decision:'edit',description:'kratko'}),/Invalid action/);
+assert.throws(()=>prepareManagerDecision(rec,{decision:'accept',dueOn:'2026-02-30'}),/Invalid deadline/);
+assert.throws(()=>prepareManagerDecision({...rec,requiresManagerJudgment:false},{decision:'accept'}),/Invalid manager/);
+console.log('PASS: manager accept/edit/reject with opt-in persistence, deadline validation and no automatic writes');
