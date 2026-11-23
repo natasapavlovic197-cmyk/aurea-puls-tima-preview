@@ -1,0 +1,24 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {createEmployeeGateway}=require('./employee-server-gateway.cjs');
+const hash='b'.repeat(64),answers=['J1','K1','O1','P1'].map(code=>({code,rating:6,recipient:'secret'}));
+const event=(action,body={})=>({httpMethod:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,hash,...body})});
+(async()=>{
+ let calls=0;
+ const adapter={invitation:async()=>{calls++;return {status:'ready',questions:answers.map((a,i)=>({code:a.code,wording:'Pitanje '+i,position:i+1,email:'PRIVATE'}))}},submit:async(h,a)=>{calls++;assert.equal(h,hash);assert.equal(a.some(x=>'recipient'in x),false);return {status:'submitted'}}};
+ const handler=createEmployeeGateway({adapter,rateLimit:async()=>true});
+ const invitation=await handler(event('invitation'));
+ assert.equal(invitation.statusCode,200);
+ assert.equal(invitation.body.includes('PRIVATE'),false);
+ assert.equal(JSON.parse(invitation.body).questions.length,4);
+ assert.equal((await handler(event('submit',{answers}))).statusCode,200);
+ assert.equal(calls,2);
+ assert.equal((await handler(event('submit',{answers:[answers[0],answers[0],...answers.slice(2)]}))).statusCode,400);
+ assert.equal(calls,2);
+ assert.equal((await createEmployeeGateway({adapter})(event('invitation'))).statusCode,503);
+ assert.equal((await createEmployeeGateway({adapter,rateLimit:async()=>false})(event('invitation'))).statusCode,429);
+ assert.equal((await createEmployeeGateway({adapter:{...adapter,submit:async()=>{throw Error('secret db')}} ,rateLimit:async()=>true})(event('submit',{answers}))).body.includes('secret'),false);
+ assert.equal((await handler({...event('invitation'),isBase64Encoded:true})).statusCode,400);
+ assert.equal((await handler({...event('invitation'),httpMethod:'GET'})).statusCode,405);
+ console.log('PASS: employee gateway fails closed, strips sensitive fields, validates four answers and shared throttle');
+})().catch(e=>{console.error(e);process.exitCode=1});
