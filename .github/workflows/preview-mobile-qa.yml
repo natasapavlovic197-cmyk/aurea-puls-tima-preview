@@ -1,13 +1,5 @@
 name: AUREA preview mobile functional QA
 on:
-  push:
-    paths:
-      - 'index.html'
-      - 'zaposleni/**'
-      - 'rukovodilac/**'
-      - 'tests/**'
-      - 'playwright.config.cjs'
-      - '.github/workflows/preview-mobile-qa.yml'
   workflow_dispatch:
 jobs:
   mobile-qa:
