@@ -34,3 +34,11 @@ No Netlify deployment, TinyFish run, paid resource provisioning, secret mutation
 - Verified: membership `inherit_option=false`, `set_option=true`, `admin_option=false`; login still has **no direct USAGE** on `aurea_private` and **no direct INSERT** on the limiter table.
 - Intended flow: restricted SQL session connects as `aurea_limiter_login`, then explicitly `SET ROLE aurea_rate_limiter` and validates `current_user` before limiter upsert. **Current application does not yet implement this flow**, and the role has no password, so live connection remains disabled.
 - Do not configure a password via a chat transcript or commit. A server-side secret management plan, authenticated session identity test, and transaction/pool safety review are still required before enabling.
+
+## Live activation checkpoint (2026-11-23)
+- Latest GitHub B2B privacy suite succeeded (run 45205058677). This is a mock/unit suite, **not** an authenticated database integration test.
+- Read-only catalog check confirmed login role has NULL password, NO BYPASSRLS, membership SET=true / INHERIT=false / ADMIN=false, and no direct SELECT on employee responses or INSERT on limiter table.
+- Attempted `SET LOCAL ROLE aurea_rate_limiter` through the Supabase management SQL connection was rejected (permission denied). This connection is **not** `aurea_limiter_login`; the failure does not prove the app login cannot set role. Must verify through an actual dedicated-login session.
+- Remaining blocker: no secure end-to-end password provisioning and secret injection path has been established. Never pass credentials via SQL tool logs, GitHub commits, chat, or frontend. The current DB account is deliberately unusable until that is solved.
+- Keep Netlify manager deployment flags disabled and public endpoint fail-closed. Do not claim live manager integration or cross-tenant isolation until tested with two distinct authenticated organizations.
+- Next controlled test: configure secret in provider secret manager, verify TLS/pooler username/host, connect as dedicated login, execute BEGIN/SET LOCAL ROLE/identity/allowlisted limiter UPSERT/COMMIT; confirm unauthorized tables denied; test invalid JWT, cross-tenant access, minimum aggregation threshold, concurrent limiter requests and outage fail-closed.
