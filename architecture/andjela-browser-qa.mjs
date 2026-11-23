@@ -34,7 +34,7 @@ try {
    });
    const bytes=await page.locator('#exercise-portrait').screenshot({path:resolve(dir,version+'-'+String(i+1).padStart(2,'0')+'-'+emotions[i]+'.png'),animations:'disabled'});
    const hash=createHash('sha256').update(bytes).digest('hex');
-   const ok=info.speaker==='andjela'&&info.emotion===emotions[i]&&info.pose===expectedPose[i]&&info.visible&&info.image&&info.layers===1;
+   const ok=info.speaker==='andjela'&&info.emotion===emotions[i]&&info.pose===expectedPose[i]&&info.visible&&info.image&&info.layers===1&&info.size==='300% 100%';
    if(!ok)failures++;
    nameResults.push({expected:emotions[i],expectedPose:expectedPose[i],pass:ok,pixelsHash:hash.slice(0,14),...info});
   }
@@ -48,13 +48,13 @@ try {
   const choice=page.locator('#exercise-options .exercise-choice').first();
   if(await choice.isVisible()){
     await page.emulateMedia({reducedMotion:'no-preference'});
-    await choice.click();await page.waitForTimeout(500);
+    await choice.click();await page.waitForFunction(()=>{const s=document.querySelector('#exercise-portrait .portrait-stage .portrait-shot:last-child');return !!s&&s.dataset.pose!=='listening';},null,{timeout:12000});await page.waitForTimeout(150);
     realScene=await page.evaluate(()=>{
      const p=document.querySelector('#exercise-portrait'),ss=[...p.querySelectorAll('.portrait-stage .portrait-shot')];
      return {layers:ss.length,pose:ss.at(-1)?.dataset.pose,visible:!!ss.at(-1)&&ss.at(-1).getBoundingClientRect().width>0};
     });
     await page.locator('#exercise-portrait').screenshot({path:resolve(dir,version+'-dialogue.png'),animations:'allow'});
-    if(realScene.layers!==1)failures++;
+    if(realScene.layers!==1||realScene.pose==='listening')failures++;
   }else {realScene={error:'No visible dialogue choice'};failures++}
   if(errors.length)failures++;
   const summary={version,initial,distinctPixels,distinctPositions,realScene,errors,expressions:nameResults};
