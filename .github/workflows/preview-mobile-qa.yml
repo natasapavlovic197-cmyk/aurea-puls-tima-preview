@@ -40,7 +40,9 @@ jobs:
           npm install --no-save @playwright/test@1.56.1
           npx playwright install --with-deps chromium
       - name: Run iPhone-size browser tests
-        run: npx playwright test --workers=1 --reporter=list
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 > /tmp/aurea-qa-http.log 2>&1 &
+          npx playwright test --workers=1 --reporter=list
       - name: Upload screenshots and traces
         if: always()
         uses: actions/upload-artifact@v4
