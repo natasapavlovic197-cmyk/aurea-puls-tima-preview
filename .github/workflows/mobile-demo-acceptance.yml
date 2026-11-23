@@ -1,5 +1,10 @@
 name: AUREA mobile demo acceptance
 on:
+  push:
+    paths:
+      - '.github/workflows/mobile-demo-acceptance.yml'
+      - 'tests/**'
+      - 'playwright.config.cjs'
   workflow_dispatch:
 jobs:
   mobile-demo:
