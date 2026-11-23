@@ -1,0 +1,25 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {createEmployeeDurableRateLimit}=require('./employee-durable-rate-limit.cjs');
+const {SQL}=require('./postgres-durable-limiter.cjs');
+const event={requestContext:{identity:{sourceIp:'192.0.2.17'}},headers:{'x-forwarded-for':'198.51.100.8'}};
+(async()=>{
+ const buckets=new Map(),seen=[];
+ const query=async(sql,params)=>{assert.equal(sql,SQL);seen.push(params);const k=params.join(':');const hits=(buckets.get(k)||0)+1;buckets.set(k,hits);return {rows:[{hits}]}};
+ const limit=createEmployeeDurableRateLimit({query,secret:'x'.repeat(64),clock:()=>1700000000000});
+ for(let i=0;i<15;i++)assert.equal(await limit(event,'invitation'),true);
+ assert.equal(await limit(event,'invitation'),false);
+ for(let i=0;i<8;i++)assert.equal(await limit(event,'submit'),true);
+ assert.equal(await limit(event,'submit'),false);
+ assert.equal(buckets.size,2);
+ assert.notEqual(seen[0][0],seen[16][0]);
+ assert.match(seen[0][0],/^[a-f0-9]{64}$/);
+ assert.equal(JSON.stringify(seen).includes('192.0.2.17'),false);
+ assert.equal(JSON.stringify(seen).includes('198.51.100.8'),false);
+ assert.equal(await limit({headers:{'x-forwarded-for':'192.0.2.17'}},'submit'),false);
+ assert.equal(await limit(event,'other'),false);
+ const down=createEmployeeDurableRateLimit({query:async()=>{throw Error('DB down')},secret:'x'.repeat(64)});
+ assert.equal(await down(event,'submit'),false);
+ assert.throws(()=>createEmployeeDurableRateLimit({query:()=>{},secret:'weak'}),TypeError);
+ console.log('PASS: employee durable throttle separates invitation/submit buckets, trusts server IP, fails closed');
+})().catch(e=>{console.error(e);process.exitCode=1});
