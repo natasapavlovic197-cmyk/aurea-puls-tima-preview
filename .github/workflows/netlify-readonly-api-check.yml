@@ -1,0 +1,64 @@
+name: AUREA Netlify read-only API check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aurea-netlify-readonly-api-check
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    name: Verify Netlify API access (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: aurea-staging-admin
+    steps:
+      - name: Confirm protected environment gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/employee-ten-domains-step5"
+          echo "PASS: execution is restricted to integration/employee-ten-domains-step5."
+          echo "PASS: GitHub has admitted this job into aurea-staging-admin."
+          echo "INFO: GitHub Environment required reviewers and deployment branch policy are enforced before this step starts."
+
+      - name: Verify Netlify API authorization with read-only GET
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
+            echo "::error::Missing environment secret NETLIFY_AUTH_TOKEN."
+            exit 1
+          fi
+          if [ -z "${NETLIFY_SITE_ID:-}" ]; then
+            echo "::error::Missing environment variable NETLIFY_SITE_ID."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          status="$(curl --silent --show-error --max-time 30 \
+            --request GET \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
+            --header "Accept: application/json" \
+            "https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_ID}")"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Netlify read-only site lookup returned HTTP $status."
+            exit 1
+          fi
+
+          jq -e --arg site_id "$NETLIFY_SITE_ID" '.id == $site_id' "$response_file" >/dev/null
+          echo "PASS: Netlify API returned HTTP 200 for the configured site."
+          jq '{id, name, url, ssl_url, custom_domain, repo_url, build_settings: {repo_branch: .build_settings.repo_branch}}' "$response_file"
