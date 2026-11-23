@@ -19,6 +19,7 @@ jobs:
       - run: node architecture/weekly-orchestrator.test.cjs
       - run: node architecture/weekly-job-runner.test.cjs
       - run: node architecture/weekly-delivery-worker.test.cjs
+      - run: node architecture/weekly-delivery-store.test.cjs
       - run: node architecture/report-release.test.cjs
       - run: node architecture/manager-rpc-adapter.test.mjs
       - run: node architecture/master-lock.test.cjs
