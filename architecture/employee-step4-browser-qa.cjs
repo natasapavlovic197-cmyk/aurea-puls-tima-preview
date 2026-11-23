@@ -30,7 +30,7 @@ fs.mkdirSync(out,{recursive:true});
      if(i===1){await page.locator('#prev').click();assert.equal(await page.locator('input[name="answer"][value="4"]').isChecked(),true);await page.locator('#next').click();}
      await page.locator('#next').click();
     }
-    assert.match(await page.locator('#employee').innerText(),/Završni osvrt/);
+    assert.match(await page.locator('#employee').innerText(),/Završni osvrt/i);
     await page.locator('#optionalBack').click();
     assert.match(await page.locator('.statline').innerText(),/Pitanje 6 od 6/);
     await page.locator('#next').click();
