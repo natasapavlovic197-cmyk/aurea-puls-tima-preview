@@ -1,0 +1,23 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {rehearse,ORGS}=require('./full-week-rehearsal.cjs');
+(async()=>{
+ const r=await rehearse();
+ assert.deepEqual(r.runs.map(x=>x.sent),[6,6]);
+ assert.equal(r.submission.A.length,5);
+ assert.equal(r.submission.B.length,4);
+ assert.equal(r.submission.A.every(x=>x.statusCode===200),true);
+ assert.equal(r.submission.B.every(x=>x.statusCode===200),true);
+ assert.equal(r.replay.statusCode,400,'single-use invitation');
+ assert.equal(r.reminders.A.sent,1);
+ assert.equal(r.reminders.B.sent,2);
+ assert.equal(r.published.has(ORGS.A),true,'five responses publish');
+ assert.equal(r.published.has(ORGS.B),false,'four responses suppressed');
+ assert.equal(r.own.statusCode,200);
+ assert.equal(r.crossTenant.statusCode,403);
+ assert.equal(r.unauthenticated.statusCode,401);
+ assert.equal(JSON.parse(r.own.body).report.domains.workload,2);
+ assert.equal(r.rawAnswers.length,36,'9 respondents x four questions');
+ assert.equal(r.rawAnswers.every(x=>Object.keys(x).sort().join(',')==='domain,tenant,value,week'),true,'anonymous response store');
+ console.log('PASS: full synthetic week: 2 tenants, 9 submissions, 1+2 reminders, suppression, replay, manager isolation');
+})().catch(e=>{console.error(e);process.exitCode=1});
