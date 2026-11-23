@@ -1853,6 +1853,15 @@ h1,h2,h3,.wp-title,.ap-top h2,.dash-banner h1{font-family:'Libre Baskerville',Ge
 @media(prefers-reduced-motion:reduce){#pulse-manager-flow .signature-questions fieldset{animation:none}}
 </style>
 <style id="aurea-andjela-no-hologram-test">
+/* QA proportion lock: grid stretch must not deform Anđela's 4:5 photographic frames. */
+#exercise-portrait.exercise-portrait[data-speaker="andjela"] {
+  align-self:start!important;
+  aspect-ratio:4/5!important;
+  box-sizing:border-box!important;
+  height:auto!important;
+  min-height:0!important;
+}
+
 /* AUREA isolated comparison: no simultaneous translucent face images. */
 #exercise-portrait .portrait-shot.portrait-andjela > .portrait-frame {
   animation:none!important;
