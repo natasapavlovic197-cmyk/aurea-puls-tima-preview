@@ -7,6 +7,7 @@ on:
       - 'locked/**'
       - 'v4-demo/**'
       - 'portal/**'
+      - 'radni-prostor/**'
       - '.github/workflows/b2b-privacy-checks.yml'
   workflow_dispatch:
 jobs:
@@ -24,3 +25,4 @@ jobs:
       - run: node architecture/manager-rpc-adapter.test.mjs
       - run: node architecture/master-lock.test.cjs
       - run: node architecture/portal-security.test.cjs
+      - run: node architecture/manager-workspace.test.cjs
