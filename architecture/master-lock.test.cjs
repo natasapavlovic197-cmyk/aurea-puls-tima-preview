@@ -8,4 +8,7 @@ const current=fs.readFileSync(path.join(root,'rukovodilac/index.html'));
 assert.deepEqual(current,master,'APPROVED MANAGER MASTER CHANGED: restore or obtain explicit approval before changing /rukovodilac/');
 const demo=fs.readFileSync(path.join(root,'v4-demo/index.html'),'utf8');
 assert.match(demo,/\/rukovodilac\//,'V4 demo must lead to approved manager experience');
-console.log('PASS: manager master identical, V4 demo routes to approved experience');
+const portal=fs.readFileSync(path.join(root,'portal/index.html'));
+const portalMaster=fs.readFileSync(path.join(root,'locked/portal-b2b-approved.html'));
+assert.deepEqual(portal,portalMaster,'APPROVED B2B PORTAL CHANGED: restore snapshot or obtain explicit approval');
+console.log('PASS: manager master and B2B portal locked; V4 demo routes to approved experience');
