@@ -40,6 +40,7 @@ const path=require('path');
   await page.waitForFunction(()=>document.querySelector('.aurea-action-card small')?.textContent.includes('Završeno'));
   assert(savedAction.status==='done','activity status persisted through API');
   await page.locator('#logout').click();
+  await page.locator('#private').waitFor({state:'hidden',timeout:5000});
   assert(await page.locator('#private').isHidden(),'logout hides private panel');
   assert(calls.some(c=>c.name==='logout'),'logout API invoked');
   assert(await page.locator('.aurea-action-card').count()===0,'logout clears activity cards');
