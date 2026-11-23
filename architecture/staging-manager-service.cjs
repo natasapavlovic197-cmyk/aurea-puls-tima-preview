@@ -7,7 +7,7 @@ function createStagingManagerService({env,Pool,fetchImpl}={}){
  const required=['AUREA_STAGING_DATABASE_HOST','AUREA_STAGING_DATABASE_NAME','AUREA_STAGING_DATABASE_PASSWORD','AUREA_LIMITER_SECRET','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY'];
  if(required.some(k=>typeof env[k]!=='string'||!env[k]))throw new TypeError('Missing required server configuration');
  if(env.AUREA_STAGING_DATABASE_USER!=='aurea_limiter_login')throw new TypeError('Restricted SQL login required');
- if(env.AUREA_B2B_MANAGER_ENABLED!=='true')throw new TypeError('Manager service not approved');
+ if(env.AUREA_B2B_MANAGER_ENABLED!=='true'||env.AUREA_B2B_MANAGER_DEPLOY_APPROVED!=='true')throw new TypeError('Manager service not approved');
  if(!/^[a-z0-9.-]+$/i.test(env.AUREA_STAGING_DATABASE_HOST)||!env.AUREA_STAGING_DATABASE_HOST.endsWith('.supabase.com'))throw new TypeError('Unexpected database host');
  if(env.AUREA_STAGING_DATABASE_PASSWORD.length<24)throw new TypeError('Weak server password');
  const pool=new Pool({
