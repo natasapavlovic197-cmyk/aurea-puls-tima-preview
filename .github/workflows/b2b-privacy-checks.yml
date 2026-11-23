@@ -30,3 +30,4 @@ jobs:
       - run: node architecture/staging-pulse-db-adapter.test.cjs
       - run: node architecture/manager-summary-boundary.test.cjs
       - run: node architecture/full-week-rehearsal.test.cjs
+      - run: node architecture/employee-rpc-adapter.test.mjs
