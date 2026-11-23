@@ -1,0 +1,21 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {createWeeklyDeliveryStore}=require('./weekly-delivery-store.cjs');
+(async()=>{
+ const seen=[];
+ const pool={async query(sql,params){seen.push({sql,params});if(sql.includes('claim_weekly'))return {rows:[{id:'12',organization_id:'org-1',week_start:'2026-11-23',action:'invite',lease_token:params[0]}]};return {rows:[{finished:true}]}}};
+ const store=createWeeklyDeliveryStore({pool});
+ const job=await store.claim();
+ assert.equal(job.id,12);assert.equal(job.weekStart,'2026-11-23');
+ assert.match(job.leaseToken,/^[a-f0-9-]{36}$/);
+ assert.equal(await store.complete(job.id,job.leaseToken),true);
+ assert.equal(await store.fail(job.id,job.leaseToken),true);
+ assert.equal(seen.length,3);
+ assert.equal(seen[1].params[0],12);
+ assert.equal(seen[2].params[0],12);
+ assert.throws(()=>createWeeklyDeliveryStore({}),TypeError);
+ await assert.rejects(()=>store.complete(12,'invalid'),TypeError);
+ const mismatch=createWeeklyDeliveryStore({pool:{query:async()=>({rows:[{...job,lease_token:'not-the-lease'}]})}});
+ await assert.rejects(()=>mismatch.claim(),/Lease token mismatch/);
+ console.log('PASS: atomic lease SQL adapter, parameterization, token validation and acknowledgments');
+})().catch(e=>{console.error(e);process.exitCode=1});
