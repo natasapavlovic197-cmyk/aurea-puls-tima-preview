@@ -6,7 +6,7 @@ function managerDeploymentPreflight({env={},driverAvailable=false}={}){
  const missing=REQUIRED.filter(k=>typeof env[k]!=='string'||env[k].length===0);
  const problems=[];
  if(missing.length)problems.push('missing_server_configuration');
- if(env.AUREA_STAGING_DATABASE_USER!=='aurea_rate_limiter')problems.push('restricted_login_required');
+ if(env.AUREA_STAGING_DATABASE_USER!=='aurea_limiter_login')problems.push('restricted_login_required');
  if(typeof env.AUREA_LIMITER_SECRET!=='string'||env.AUREA_LIMITER_SECRET.length<32)problems.push('limiter_secret_invalid');
  if(typeof env.AUREA_STAGING_DATABASE_PASSWORD!=='string'||env.AUREA_STAGING_DATABASE_PASSWORD.length<24)problems.push('database_password_invalid');
  if(!driverAvailable)problems.push('postgres_driver_unavailable');
