@@ -1,0 +1,18 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {buildTrendSignals}=require('./manager-trend-signals.cjs');
+const r=(weekStart,favorablePercent,responseCount=6,domain='workload')=>({weekStart,favorablePercent,responseCount,domain});
+const result=buildTrendSignals([r('2026-11-09',70),r('2026-11-16',40),r('2026-11-23',35)]);
+assert.equal(result[0].persistentUnfavorable,true);
+assert.equal(result[0].changePoints,-5);
+assert.equal(result[0].visibleWeeks,3);
+const suppressed=buildTrendSignals([r('2026-11-09',40),r('2026-11-16',10,4),r('2026-11-23',35)]);
+assert.equal(suppressed[0].persistentUnfavorable,false);
+assert.equal(suppressed[0].changePoints,null);
+assert.equal(buildTrendSignals([r('2026-11-23',20,4)]).length,0);
+assert.equal(buildTrendSignals([r('2026-11-09',20),r('2026-11-23',20)])[0].persistentUnfavorable,false);
+assert.throws(()=>buildTrendSignals([r('2026-11-23',30),r('2026-11-23',31)]),/Duplicate/);
+assert.throws(()=>buildTrendSignals([r('2026-11-23',NaN)]),/Invalid aggregate/);
+assert.throws(()=>buildTrendSignals([r('2026-11-23',30)],{minResponses:4}),/Invalid trend configuration/);
+assert.equal(buildTrendSignals([r('2026-11-16',80),r('2026-11-23',90)])[0].persistentUnfavorable,false);
+console.log('PASS: privacy-safe manager trends, threshold suppression, no interpolation, persistent weekly alerts');
