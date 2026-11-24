@@ -32,7 +32,7 @@ async function main(){
  const issue=createInvitationIssuer({pool,tokens});
  const mon=week+' 10:00:00 Europe/Belgrade';
  const admin=async(expr)=>sql("SELECT set_config('request.jwt.claims',jsonb_build_object('sub','"+a.u+"','role','authenticated','session_id',(SELECT id FROM auth.sessions WHERE user_id='"+a.u+"' ORDER BY created_at DESC LIMIT 1))::text,true); "+expr+";");
- await sql("INSERT INTO aurea_delivery_rpc.active_recipients(organization_id,email) SELECT '"+a.o+"','qa-"+i+"-"+a.o+"@example.invalid' FROM generate_series(1,6) i");
+ await sql("INSERT INTO aurea_delivery_rpc.active_recipients(organization_id,email) SELECT '"+a.o+"','qa-'||i||'-"+a.o+"@example.invalid' FROM generate_series(1,6) i");
  // Management SQL only advances the private test clock; all delivery operations use actual HTTPS.
  console.log('STEP: prepare roster');
  const prep=await admin("SELECT * FROM aurea_delivery_rpc.prepare_monday('"+mon+"'::timestamptz)");
