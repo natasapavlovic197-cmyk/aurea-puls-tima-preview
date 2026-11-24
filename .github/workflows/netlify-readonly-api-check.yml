@@ -1,37 +1,14 @@
-name: AUREA P3 static draft deployment (approval required)
+name: AUREA P3 reconcile existing static draft (approval required)
 on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: aurea-staging-admin-login
   cancel-in-progress: false
 jobs:
-  package:
-    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          ref: 98ad4c01ca006469e3437880fc390e391e7ff242
-          persist-credentials: false
-      - name: Build pinned candidate without secrets
-        env:
-          AUREA_POSTGREST_STAGING_BUILD: 'true'
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "98ad4c01ca006469e3437880fc390e391e7ff242"
-          npm install --no-save --ignore-scripts esbuild@0.25.5 @supabase/supabase-js@2.49.4
-          node architecture/build-staging-manager.cjs
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: aurea-p3-public-candidate
-          path: dist-staging-manager/
-          if-no-files-found: error
-          retention-days: 1
   draft:
-    needs: package
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
     environment: aurea-staging-admin
     runs-on: ubuntu-24.04
@@ -41,7 +18,9 @@ jobs:
         with:
           name: aurea-p3-public-candidate
           path: candidate
-      - name: Create static draft only; never publish or restore production
+          github-token: ${{ github.token }}
+          run-id: 45421506288
+      - name: Resume exact existing draft only; never create, publish or restore
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
@@ -56,7 +35,7 @@ jobs:
           const names=['employee.bundle.js','employee.html','index.html','manager-login.bundle.js','manager-login.css','staging-config.js'];
           const keys=['AUREA_DELIVERY_AUTH_USER_ID','AUREA_DELIVERY_AUTH_EMAIL','AUREA_DELIVERY_AUTH_PASSWORD','AUREA_INVITATION_HMAC_SECRET','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY'];
           const flags=['AUREA_DELIVERY_ENABLED','AUREA_DELIVERY_DEPLOY_APPROVED','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED'];
-          let phase='guard',id=null,creationAttempted=false;
+          let phase='guard',id='6b05a80c7dcf62501e804f08';
           const check=(ok,label)=>{if(!ok)throw Error('blocked');console.log('PASS '+label)};
           const safeId=x=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(x);
           async function api(method,path,body,type='application/json'){
@@ -72,7 +51,13 @@ jobs:
             return s;
           }
           function verifyDraft(d){
-            if(!d||d.id!==id||d.site_id!==SITE||d.draft!==true||d.context==='production'||d.published_at||!['new','preparing','prepared','uploading','uploaded','processing','processed','ready','enqueued','building'].includes(d.state)||!Array.isArray(d.required_functions)||d.required_functions.length!==0||(d.required_edge_functions??[]).length!==0||(d.function_schedules??[]).length!==0)throw Error('unexpected draft metadata');
+            const meta={id:d?.id===id,site:d?.site_id===SITE,draft:typeof d?.draft==='boolean'?d.draft:null,context:['production','branch-deploy','deploy-preview','dev'].includes(d?.context)?d.context:null,published:!!d?.published_at,state:safeId(d?.state)?d.state:null,requiredFiles:Array.isArray(d?.required)?d.required.length:null,requiredFunctions:Array.isArray(d?.required_functions)?d.required_functions.length:null,requiredEdgeFunctions:Array.isArray(d?.required_edge_functions)?d.required_edge_functions.length:null,schedules:Array.isArray(d?.function_schedules)?d.function_schedules.length:null};
+            console.log('DRAFT_METADATA '+JSON.stringify(meta));
+            // Do not treat an absent draft flag or production context as positive proof of isolation.
+            if(!meta.id||!meta.site||meta.draft!==true||meta.published||!['new','preparing','prepared','uploading','uploaded','processing','processed','ready','enqueued','building'].includes(meta.state))throw Error('draft isolation not proven');
+            for(const k of ['required_functions','required_edge_functions','function_schedules']){
+              if(d[k]!=null&&(!Array.isArray(d[k])||d[k].length!==0))throw Error('unexpected function metadata');
+            }
           }
           (async()=>{
             check(process.env.GITHUB_REPOSITORY==='natasapavlovic197-cmyk/aurea-puls-tima-preview'&&process.env.GITHUB_REF==='refs/heads/'+BRANCH&&process.env.NETLIFY_SITE_ID===SITE&&!!process.env.NETLIFY_AUTH_TOKEN,'exact execution boundary');
@@ -97,18 +82,15 @@ jobs:
               if(rows.length!==1||v.is_secret!==true||v.scopes?.length!==1||v.scopes[0]!=='functions'||v.values?.length!==1||v.values[0].context!=='branch'||v.values[0].context_parameter!==BRANCH)throw Error('secret scope drift');
             }
             check(true,'existing branch secrets unchanged; not injected');
-            phase='create draft';
+            phase='reconcile existing draft';
             await anchor();
-            creationAttempted=true;
-            const d=await api('POST','/sites/'+SITE+'/deploys',{draft:true,files,functions:{},edge_functions:{},function_schedules:[]});
-            if(!safeId(d?.id))throw Error('unknown deploy id');
-            id=d.id;
-            console.log('DRAFT_ID '+id);
+            const d=await api('GET','/sites/'+SITE+'/deploys/'+id);
             verifyDraft(d);
             await anchor();
             phase='upload draft files';
-            if(!Array.isArray(d.required)||d.required.some(h=>!Object.values(files).includes(h)))throw Error('unexpected digest');
-            for(const h of new Set(d.required)){
+            if(d.state!=='ready'&&(!Array.isArray(d.required)||d.required.some(h=>!Object.values(files).includes(h))))throw Error('unexpected digest');
+            if(d.state==='ready'&&Array.isArray(d.required)&&d.required.length)throw Error('ready draft has missing files');
+            for(const h of new Set(d.required??[])){
               const n=names.find(n=>files['/'+n]===h);
               await api('PUT','/deploys/'+id+'/files/'+encodeURIComponent(n),bytes[n],'application/octet-stream');
             }
@@ -125,12 +107,17 @@ jobs:
             check(true,'production anchor and stopped builds unchanged');
             phase='draft URL';
             const u=new URL(ready.deploy_ssl_url);
+            for(const n of names){
+              const response=await fetch(u.origin+'/'+n,{redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});
+              if(!response.ok||crypto.createHash('sha1').update(Buffer.from(await response.arrayBuffer())).digest('hex')!==files['/'+n])throw Error('deployed file mismatch');
+            }
+            check(true,'all six deployed files match artifact digests');
             check(u.protocol==='https:'&&u.hostname===id+'--aurea-puls-tima-preview.netlify.app'&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password,'unique draft URL');
             console.log('DRAFT_URL '+u.origin);
             console.log('STATIC ONLY: no runtime credential validation, no scheduler, no emails, no publish or restore');
           })().catch(async()=>{
             console.error('BLOCKED '+phase+'; raw diagnostics suppressed');
-            if(creationAttempted)console.error('RECONCILE draft '+(id||'unknown id')+'; do not blindly retry or restore');
+            console.error('RECONCILE draft '+id+'; do not blindly retry or restore');
             try{await anchor();console.log('PASS production anchor unchanged after failure')}catch{console.error('CRITICAL production anchor unconfirmed; manual review required')}
             process.exitCode=1;
           });
