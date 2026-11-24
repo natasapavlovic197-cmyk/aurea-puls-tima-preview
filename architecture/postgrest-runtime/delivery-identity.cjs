@@ -49,11 +49,11 @@ function readServerConfig(env={}){
 }
 // Auth adapter is injected; live credential storage/identity provisioning remains a separate gate.
 // No public issue/schedule entrypoint: this factory only prepares a disabled pipeline.
-function prepareDeliveryIdentity({env,auth,clock=Date.now,origin}={}){
+function prepareDeliveryIdentity({env,auth,clock=Date.now,origin,fetchImpl=globalThis.fetch}={}){
  const c=readServerConfig(env);
  const session=createDeliverySession({auth,identityId:c.identityId,clock});
  const {prepareHttpsDelivery}=require('./delivery-service.cjs');
- const delivery=prepareHttpsDelivery({url:c.url,key:c.key,readToken:session.readToken,hmacSecret:c.hmacSecret,origin,clock:()=>new Date(clock()),enabled:false});
+ const delivery=prepareHttpsDelivery({url:c.url,key:c.key,readToken:session.readToken,hmacSecret:c.hmacSecret,origin,fetchImpl,clock:()=>new Date(clock()),enabled:false});
  return Object.freeze({processNext:delivery.processNext,close:session.close});
 }
 module.exports={createDeliverySession,readServerConfig,prepareDeliveryIdentity};
