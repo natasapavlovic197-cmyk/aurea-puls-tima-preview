@@ -1,9 +1,12 @@
 'use strict';
 const {buildManagerTenDomainView}=require('./manager-ten-domain-view.cjs');
 const {recommendInterventions}=require('./manager-interventions.cjs');
-function prepareManagerReview(rows){
+function prepareManagerReview(rows,{referenceWeek}={}){
  const view=buildManagerTenDomainView(rows);
- return {view,recommendations:recommendInterventions(view.domains.flatMap(d=>d.items))};
+ const signals=view.domains.flatMap(d=>d.items);
+ const latest=referenceWeek??rows.map(r=>r.weekStart).sort().at(-1);
+ if(latest!==undefined)require('./psychometric-item-bank.cjs').weeklyItems(latest);
+ return {view,recommendations:recommendInterventions(signals.filter(s=>s.latestWeek===latest))};
 }
 function reviseActivity(previous,input){
  if(!input||typeof input.text!=='string'||!input.text.trim()||input.text.length>2000)throw TypeError('Invalid activity');

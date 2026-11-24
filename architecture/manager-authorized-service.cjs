@@ -1,6 +1,7 @@
 'use strict';
 const {buildPublishedManagerReport}=require('./published-manager-report.cjs');
-function createAuthorizedManagerService({bridge}={}){
+const {expectedClosedWeek}=require('./publication-freshness.cjs');
+function createAuthorizedManagerService({bridge,now=()=>new Date()}={}){
  if(!bridge||['authenticate','readAuthorizedPublications','readActions','saveAction'].some(k=>typeof bridge[k]!=='function'))throw new TypeError('Missing manager bridge');
  async function identity(event,organizationId){
   if(typeof organizationId!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(organizationId))throw new TypeError('Invalid organization');
@@ -11,7 +12,7 @@ function createAuthorizedManagerService({bridge}={}){
  async function overview(event,organizationId){
   const scope=await identity(event,organizationId);
   const [rows,activities]=await Promise.all([bridge.readAuthorizedPublications(scope),bridge.readActions(scope)]);
-  return {report:buildPublishedManagerReport(rows),activities};
+  return {report:buildPublishedManagerReport(rows,{referenceWeek:expectedClosedWeek(now())}),activities};
  }
  async function save(event,organizationId,input){
   const scope=await identity(event,organizationId);
