@@ -11,9 +11,9 @@ function fixture(payload,ok=true){
  return {bridge,calls};
 }
 test('read activities with user JWT and organization',async()=>{
- const rows=[{id,description:'QA activity',status:'open'}];
+ const rows=[{id,description:'QA activity',status:'open',private_email:'QA_PRIVATE_SENTINEL'}];
  const {bridge,calls}=fixture(rows);
- assert.deepEqual(await bridge.readActions({token,organizationId:org}),rows);
+ assert.deepEqual(await bridge.readActions({token,organizationId:org}),[{id,description:'QA activity',due_on:null,status:'open'}]);
  assert.equal(calls[0].headers.authorization,'Bearer '+token);
  assert.equal(JSON.parse(calls[0].body).p_organization_id,org);
  assert.ok(calls[0].url.endsWith('/aurea_manager_actions'));
