@@ -1,0 +1,14 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),{webcrypto}=require('node:crypto');
+const {weeklyItems}=require('./psychometric-item-bank.cjs');
+const {snapshot,renderPersonalInsights}=require('./employee-personal-insights.cjs');
+const {append,series,coverage,seal,open,normalize}=require('./employee-personal-history.cjs');
+const {chart}=require('./employee-personal-history-ui.cjs');
+const dates=['2026-11-23','2026-11-30','2026-12-07','2026-12-14'];
+const rows=(d,v=4,na=false)=>{const q=weeklyItems(d).map(x=>({code:x.code,wording:x.text}));return snapshot(q,Object.fromEntries(q.map((x,i)=>[x.code,na&&i===2?6:v])))};
+const records=dates.reduce((acc,d,i)=>append(acc,rows(d,i+1),d),[]);
+test('four rotations cover ten domains, current week does not invent data',()=>{assert.equal(coverage(records).length,10);assert.equal(coverage(records.slice(0,1)).length,5);assert.match(renderPersonalInsights(rows(dates[0])),/Nije mereno ove nedelje/);});
+test('NA is missing, not zero or six',()=>{const r=rows(dates[0],4,true);assert.equal(r[2].rating,null);assert.equal((renderPersonalInsights(r).match(/<circle /g)||[]).length,5);});
+test('identical item only; absent rotation stays missing',()=>{assert.deepEqual(series(records,'A_CLARITY').map(x=>x.rating),[1,2,3,4]);assert.deepEqual(series(records,'R_INFO').map(x=>x.rating),[1,null,null,null]);assert.match(chart(records,'R_INFO'),/najmanje dva/);assert.match(chart(records,'A_CLARITY'),/\+3 poena/);});
+test('reject duplicate dates and changed wording',()=>{assert.throws(()=>append(records,rows(dates[0]),dates[0]));const c=structuredClone(records);c[0].items[0].wording='changed';assert.throws(()=>normalize(c));});
+test('archive encrypt/decrypt, independent nonce and salt, wrong password and tamper fail',async()=>{const pass='synthetic-test-passphrase-2026';const a=await seal(records,pass,webcrypto),b=await seal(records,pass,webcrypto);assert.notEqual(a,b);assert.notEqual(JSON.parse(a).salt,JSON.parse(b).salt);assert.notEqual(JSON.parse(a).iv,JSON.parse(b).iv);assert.ok(!a.includes('A_CLARITY'));assert.deepEqual(await open(a,pass,webcrypto),records);await assert.rejects(open(a,'incorrect-passphrase',webcrypto));const t=JSON.parse(a);t.ciphertext=(t.ciphertext[0]==='a'?'b':'a')+t.ciphertext.slice(1);await assert.rejects(open(JSON.stringify(t),pass,webcrypto));});
