@@ -1,154 +1,86 @@
-name: AUREA Netlify read-only API check
-
+name: AUREA P2.4 Netlify metadata preflight
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: aurea-netlify-readonly-api-check
   cancel-in-progress: false
-
 jobs:
-  inspect:
-    if: github.ref == 'refs/heads/integration/employee-ten-domains-step5'
-    name: Verify Netlify API access (read-only)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    environment:
-      name: aurea-staging-admin
-    steps:
-      - name: Confirm protected environment gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/integration/employee-ten-domains-step5"
-          echo "PASS: execution is restricted to integration/employee-ten-domains-step5."
-          echo "PASS: GitHub has admitted this job into aurea-staging-admin."
-          echo "INFO: GitHub Environment required reviewers and deployment branch policy are enforced before this step starts."
-
-      - name: Verify Netlify API authorization with read-only GET
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
-            echo "::error::Missing environment secret NETLIFY_AUTH_TOKEN."
-            exit 1
-          fi
-          if [ -z "${NETLIFY_SITE_ID:-}" ]; then
-            echo "::error::Missing environment variable NETLIFY_SITE_ID."
-            exit 1
-          fi
-
-          response_file="$(mktemp)"
-          trap 'rm -f "$response_file"' EXIT
-          status="$(curl --silent --show-error --max-time 30 \
-            --request GET \
-            --output "$response_file" \
-            --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${NETLIFY_AUTH_TOKEN}" \
-            --header "Accept: application/json" \
-            "https://api.netlify.com/api/v1/sites/${NETLIFY_SITE_ID}")"
-
-          if [ "$status" != "200" ]; then
-            echo "::error::Netlify read-only site lookup returned HTTP $status."
-            exit 1
-          fi
-
-          jq -e --arg site_id "$NETLIFY_SITE_ID" '.id == $site_id' "$response_file" >/dev/null
-          echo "PASS: Netlify API returned HTTP 200 for the configured site."
-          jq '{id, name, url, ssl_url, custom_domain, repo_url, build_settings: {repo_branch: .build_settings.repo_branch}}' "$response_file"
-
-      - name: Inspect owning team plan (read-only)
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$NETLIFY_SITE_ID" = "91ffeb5a-796e-4b2a-9fde-517c7e42f708"
-          umask 077
-          tmp="$(mktemp -d)"
-          trap 'rm -rf "$tmp"' EXIT
-          get() {
-            local code
-            code="$(curl --silent --show-error --max-time 25 --proto '=https' --request GET --header "Authorization: Bearer $NETLIFY_AUTH_TOKEN" --header 'Accept: application/json' --output "$2" --write-out '%{http_code}' "https://api.netlify.com/api/v1/$1")"
-            if [ "$code" != 200 ]; then
-              echo "::error::Read-only lookup failed with HTTP $code"
-              return 1
-            fi
-          }
-          get "sites/$NETLIFY_SITE_ID" "$tmp/site.json"
-          jq -e --arg id "$NETLIFY_SITE_ID" '.id == $id and .name == "aurea-puls-tima-preview"' "$tmp/site.json" >/dev/null
-          get accounts "$tmp/accounts.json"
-          # Match only the owning team, never infer a plan from another account.
-          jq -e --slurpfile site "$tmp/site.json" '
-            ($site[0]) as $s |
-            map(select((($s.account_id // "") != "" and .id == $s.account_id) or
-              (($s.account_slug // "") != "" and .slug == $s.account_slug))) |
-            if length == 1 then .[0] else error("Owning team not uniquely resolved") end |
-            {plan: (.type_name // .plan // null), plan_type: (.type // null)}
-          ' "$tmp/accounts.json" > "$tmp/plan.json"
-          jq -e '.plan != null and (.plan | type == "string")' "$tmp/plan.json" >/dev/null
-          jq 'with_entries(.value |= (if type == "string" and test("^[A-Za-z0-9 _.-]{1,80}$") then . else "unconfirmed" end))' "$tmp/plan.json"
-          jq '{builds_stopped: (if (.build_settings.stop_builds | type) == "boolean" then .build_settings.stop_builds elif (.stop_builds | type) == "boolean" then .stop_builds else "unconfirmed" end)}' "$tmp/site.json"
-          echo "READ ONLY: plan metadata does not establish write entitlement. No environment variables retrieved or changed."
-
-  supabase_inspect:
-    if: github.ref == 'refs/heads/integration/employee-ten-domains-step5' && github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview'
-    name: Supabase staging authorization and pooler (read-only)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+  metadata:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
     environment: aurea-staging-admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Inspect scoped Supabase API
+      - name: Inspect allowlisted metadata only
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const ref='ublzmoroanhlcgpnxilw';
-          const token=process.env.SUPABASE_ACCESS_TOKEN;
-          if(!token?.startsWith('sbp_fc')) {console.error('Scoped token missing or unexpected format');process.exit(1)}
-          const root='https://api.supabase.com/v1/projects/'+ref;
-          async function get(path,label){
-            try{
-              const r=await fetch(root+path,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000),headers:{authorization:'Bearer '+token,accept:'application/json'}});
-              console.log(label+' HTTP '+r.status);
-              return {status:r.status,data:r.ok?await r.json():null};
-            }catch{return {status:0,data:null}}
+          const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
+          const BRANCH='integration/employee-ten-domains-step5';
+          const keys=['AUREA_STAGING_DATABASE_PASSWORD','AUREA_LIMITER_SECRET','AUREA_STAGING_DATABASE_HOST','AUREA_STAGING_DATABASE_USER','AUREA_STAGING_DATABASE_NAME','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED','DB_PASSWORD','HMAC_SECRET','AUREA_EMPLOYEE_DATABASE_PASSWORD'];
+          const flags=new Set(['AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED']);
+          const scopes=new Set(['builds','functions','runtime','post-processing','post_processing']);
+          const contexts=new Set(['all','dev','dev-server','branch-deploy','deploy-preview','production','branch']);
+          let phase='configuration';
+          function check(ok,label){ console.log((ok?'PASS ':'BLOCKED ')+label); if(!ok)process.exitCode=1; return ok; }
+          function projectRows(rows){
+           if(!Array.isArray(rows)||rows.some(r=>!r||typeof r.key!=='string'))throw Error('schema');
+           return rows.filter(r=>keys.includes(r.key)).map(r=>({
+            key:r.key, secret:r.is_secret===true,
+            functionsOnly:Array.isArray(r.scopes)&&r.scopes.length===1&&r.scopes[0]==='functions',
+            scopeKnown:Array.isArray(r.scopes)&&r.scopes.length>0&&r.scopes.every(s=>scopes.has(s)),
+            contextsKnown:Array.isArray(r.values)&&r.values.length>0&&r.values.every(v=>v&&contexts.has(v.context)),
+            exactBranchOnly:Array.isArray(r.values)&&r.values.length>0&&r.values.every(v=>v&&v.context==='branch'&&v.context_parameter===BRANCH),
+            flagPresent:flags.has(r.key)
+           }));
           }
           (async()=>{
-            const p=await get('','Project Settings read');
-            if(p.status!==200||(p.data?.ref||p.data?.id)!==ref||p.data?.region!=='eu-west-1'||p.data?.status!=='ACTIVE_HEALTHY')throw Error('Project identity not confirmed');
-            const q=await get('/config/database/pooler','Connection Pooling read');
-            let endpoint;
-            if(q.status===200){
-              try{endpoint=require('./architecture/supabase-pooler-metadata.cjs').sessionEndpoint(q.data)}catch{
-                // Fixed allowlist only. Do not dump payload or connection strings.
-                const rows=Array.isArray(q.data)?q.data:[];
-                console.log('Pooler metadata diagnostics: array='+Array.isArray(q.data)+' rows='+rows.length);
-                for(const k of ['database_type','db_host','db_port','db_user','db_name','pool_mode','connection_string','connectionString']){
-                  console.log(k+' present in rows: '+rows.filter(x=>x&&Object.hasOwn(x,k)).length);
-                }
-              }
+           if(process.env.GITHUB_REF!=='refs/heads/'+BRANCH||process.env.GITHUB_REPOSITORY!=='natasapavlovic197-cmyk/aurea-puls-tima-preview'||process.env.NETLIFY_SITE_ID!==SITE||!process.env.NETLIFY_AUTH_TOKEN)throw Error('guard');
+           const token=process.env.NETLIFY_AUTH_TOKEN;
+           async function get(path,label){
+            phase=label;
+            const r=await fetch('https://api.netlify.com/api/v1'+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(20000)});
+            console.log(label+' HTTP '+r.status);
+            if(r.status!==200){await r.body?.cancel();throw Error('http');}
+            if(r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('pagination');}
+            return r.json();
+           }
+           const site=await get('/sites/'+SITE,'site metadata');
+           if(!check(site.id===SITE&&site.name==='aurea-puls-tima-preview','site identity'))return;
+           if(!check((site.build_settings?.stop_builds??site.stop_builds)===true,'builds stopped'))return;
+           if(!check(site.build_settings?.repo_branch==='main','production branch remains main'))return;
+           const repo=site.build_settings?.repo_url??site.repo_url??'';
+           if(!check(typeof repo==='string'&&/^https:\/\/github\.com\/natasapavlovic197-cmyk\/aurea-puls-tima-preview(?:\.git)?\/?$/.test(repo),'repository identity'))return;
+           const allowed=site.build_settings?.allowed_branches;
+           console.log('Branch deploy allowlist: '+(Array.isArray(allowed)?(allowed.includes(BRANCH)?'exact branch listed':'exact branch not listed'):'unconfirmed'));
+           if(!check(typeof site.account_id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(site.account_id),'owning account identified'))return;
+           const account=encodeURIComponent(site.account_id);
+           const accounts=await get('/accounts','team metadata');
+           const matches=Array.isArray(accounts)?accounts.filter(x=>x.id===site.account_id):[];
+           if(!check(matches.length===1,'owning team unique'))return;
+           check(matches[0].type_name==='Pro','Pro plan reported');
+           const base='/accounts/'+account+'/env';
+           const local=projectRows(await get(base+'?site_id='+SITE,'site variable metadata'));
+           const shared=projectRows(await get(base,'team variable metadata'));
+           const fn=projectRows(await get(base+'?site_id='+SITE+'&scope=functions','Functions filter'));
+           console.log('INFO Functions filter accepted; write entitlement and exact branch write support NOT VERIFIED');
+           for(const [label,rows] of [['site',local],['team',shared]]){
+            for(const key of keys){
+             const found=rows.filter(r=>r.key===key);
+             console.log(label+' '+key+': '+(found.length?'present':'not returned'));
+             for(const row of found)console.log(JSON.stringify(row));
             }
-            if(endpoint)console.log('Shared primary session endpoint: '+endpoint.host+':'+endpoint.port+' (metadata only; TLS login not tested)');
-            else console.log('Session pooler unconfirmed; response schema not accepted');
-            const ssl=await get('/ssl-enforcement','SSL Enforcement read');
-            if(ssl.status===200)console.log('SSL enforcement configuration retrieved; actual TLS login not tested');
-            // No secrets request in this metadata job. The documented GET response
-            // includes a value field; do not retrieve it without separate approval.
-            console.log('Secrets inventory: NOT EXECUTED; requires separate edge_functions_secrets_read approval');
-            console.log('Secrets write/delete: NOT VERIFIED; edge_functions_secrets_write requires separate approval');
-            if(q.status!==200||!endpoint||ssl.status!==200)process.exitCode=1;
-          })().catch(()=>{console.error('Read-only preflight stopped');process.exitCode=1});
+           }
+           check(local.filter(r=>r.flagPresent).length===0&&shared.filter(r=>r.flagPresent).length===0,'activation flags absent in returned inventories (present means stop, even if false)');
+           check(local.filter(r=>!r.flagPresent).length===0&&shared.filter(r=>!r.flagPresent).length===0,'no target key conflicts in returned inventories');
+           check(fn.every(r=>local.some(x=>x.key===r.key)),'Functions inventory consistent with site inventory');
+           console.log('BLOCKED FOR WRITES: GET cannot prove token write privilege, conditional rollback, complete shared coverage or future branch-only scope enforcement.');
+           console.log('NO WRITES. No values logged; no deployment. Result is metadata inspection only.');
+          })().catch(()=>{console.error('BLOCKED: '+phase+' request or schema failed; response suppressed');process.exitCode=1;});
           NODE
