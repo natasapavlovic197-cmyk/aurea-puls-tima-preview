@@ -1,0 +1,30 @@
+'use strict';
+const {anchors,rotation}=require('./psychometric-item-bank.cjs');
+const {append,series,coverage,seal,open}=require('./employee-personal-history.cjs');
+const bank=[...anchors,...rotation.flat()];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function chart(records,code){
+ const all=series(records,code),pts=all.filter(x=>x.rating!==null);
+ if(pts.length<2)return '<p class="fine">Za trend su potrebna najmanje dva odgovora na isto pitanje.</p>';
+ const min=Date.parse(all[0].date),max=Date.parse(all[all.length-1].date),x=d=>32+252*(Date.parse(d)-min)/Math.max(1,max-min),y=v=>152-(v-1)*30;
+ const grid=[1,2,3,4,5].map(v=>'<line x1="32" x2="284" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#e4d6cb"/><text x="12" y="'+(y(v)+4)+'" font-size="11" fill="#756c69">'+v+'</text>').join('');
+ const dots=pts.map(p=>'<circle cx="'+x(p.date)+'" cy="'+y(p.rating)+'" r="4.5" fill="#653441"/>').join('');
+ const lines=all.slice(1).map((p,i)=>{const a=all[i];return p.rating===null||a.rating===null||Date.parse(p.date)-Date.parse(a.date)>8*86400000?'':'<line x1="'+x(a.date)+'" y1="'+y(a.rating)+'" x2="'+x(p.date)+'" y2="'+y(p.rating)+'" stroke="#653441" stroke-width="2"/>';}).join('');
+ const delta=pts[pts.length-1].rating-pts[0].rating;
+ return '<div class="metric" style="cursor:default"><small>Poslednji odgovor</small><strong>'+pts[pts.length-1].rating+'/5</strong><span class="fine">Promena od prvog merenja: '+(delta>0?'+':'')+delta+' poena na skali odgovora</span></div><svg class="chart" viewBox="0 0 320 185" role="img" aria-label="Lični trend odgovora od 1 do 5">'+grid+lines+dots+'<text x="32" y="177" font-size="10" fill="#756c69">'+esc(all[0].date)+'</text><text x="284" y="177" text-anchor="end" font-size="10" fill="#756c69">'+esc(all[all.length-1].date)+'</text></svg><div class="fine">'+pts.map(p=>esc(p.date)+': '+p.rating+'/5').join(' · ')+'</div>';
+}
+function mountHistory(host,rows){
+ let records=[],busy=false,disposed=false,epoch=0;
+ const date=new Date().toISOString().slice(0,10);
+ host.innerHTML='<div class="panel fade section"><div class="eyebrow" style="color:var(--wine2)">AUREA · LIČNI KONTINUITET</div><h2>Vaše iskustvo kroz vreme.</h2><p>Ne samo da beležimo iskustvo na poslu. Pomažemo Vam da ga bolje razumete.</p><p class="fine">Dobrovoljna šifrovana datoteka koju čuvate sami. Nema automatskog čuvanja niti slanja istorije. Koristite samo sopstvenu datoteku i privatni uređaj. Izgubljenu pristupnu frazu nije moguće obnoviti.</p><label for="personal-archive">Prethodna istorija (opciono)</label><input class="field" id="personal-archive" type="file" accept=".aurea,application/json"><label for="personal-pass">Privatna pristupna fraza (najmanje 12 znakova)</label><input class="field" id="personal-pass" type="password" autocomplete="new-password" minlength="12" maxlength="256"><div class="actions"><button type="button" class="btn" id="personal-load">Otvori istoriju</button><button type="button" class="btn primary" id="personal-save">Pripremi šifrovanu datoteku</button></div><div id="personal-download"></div><p class="fine" role="status" id="personal-status"></p><div id="personal-trend" hidden><div class="notice" id="personal-coverage"></div><label for="personal-item">Izaberite pitanje za poređenje</label><select class="field" id="personal-item"></select><div id="personal-chart"></div></div><button type="button" class="btn" id="personal-clear">Obriši prikaz iz memorije</button><p class="fine">Preuzete datoteke brišete sami u aplikaciji Datoteke. Datum je datum ličnog unosa, ne potvrđena nedelja kompanije.</p></div>';
+ const $=id=>host.querySelector('#'+id),status=t=>{$('personal-status').textContent=t};
+ let url=null;
+ function revoke(){if(url){URL.revokeObjectURL(url);url=null}$('personal-download').replaceChildren()}
+ function clear(){epoch++;records=[];$('personal-pass').value='';$('personal-archive').value='';$('personal-chart').replaceChildren();$('personal-item').replaceChildren();$('personal-coverage').textContent='';$('personal-trend').hidden=true;revoke();status('Lični prikaz uklonjen iz memorije.')}
+ function update(){const trend=$('personal-trend');trend.hidden=false;$('personal-coverage').textContent='Do sada obuhvaćeno '+coverage(records).length+' od 10 oblasti; ovo nije zbirni psihološki skor.';const select=$('personal-item');select.replaceChildren();for(const q of bank){if(!series(records,q.code).some(p=>p.rating!==null))continue;const option=document.createElement('option');option.value=q.code;option.textContent=q.text;select.append(option)}$('personal-chart').innerHTML=select.value?chart(records,select.value):'<p class="fine">Nema važećih odgovora za prikaz.</p>'}
+ $('personal-item').onchange=()=>{$('personal-chart').innerHTML=chart(records,$('personal-item').value)};
+ async function action(save){if(busy||disposed)return;busy=true;const e=++epoch;try{revoke();const file=$('personal-archive').files[0],pass=$('personal-pass').value;if(file){if(file.size>1000000)throw Error('size');records=await open(await file.text(),pass);if(disposed||epoch!==e){records=[];return}}else if(!save)throw Error('file');if(disposed||epoch!==e)return;if(save){const next=append(records,rows,date);const encrypted=await seal(next,pass);if(disposed||epoch!==e)return;records=next;url=URL.createObjectURL(new Blob([encrypted],{type:'application/json'}));const a=document.createElement('a');a.className='btn';a.href=url;a.download='AUREA-licna-istorija.aurea';a.textContent='Sačuvajte datoteku';$('personal-download').append(a);status('Šifrovana datoteka je spremna. Sačuvajte je na privatnom uređaju.')}else status('Istorija je otvorena samo u ovoj stranici.');update()}catch{if(!disposed&&epoch===e)status('Nije moguće izvršiti radnju. Proverite datoteku, frazu ili da li je današnji unos već sačuvan.')}finally{if(!disposed&&epoch===e)$('personal-pass').value='';busy=false}}
+ $('personal-load').onclick=()=>action(false);$('personal-save').onclick=()=>action(true);$('personal-clear').onclick=clear;
+ return ()=>{disposed=true;clear();rows=[]};
+}
+module.exports={chart,mountHistory};
