@@ -14,7 +14,7 @@ function createStagingServer({env,query,fetchImpl,employeeHandler,dist=path.reso
  if(url.pathname==='/api/manager-workspace'||url.pathname.startsWith('/api/employee/')){
  let body='',size=0;
  for await(const chunk of req){size+=chunk.length;if(size>16000){res.writeHead(413);res.end();return;}body+=chunk.toString();}
- const result=url.pathname.startsWith('/api/employee/')? (employeeHandler?await employeeHandler({method:req.method,path:url.pathname,body,sourceIp:req.socket.remoteAddress}):{statusCode:503,headers:{},body:'Unavailable'}):await dispatch({method:req.method,url:req.url,headers:req.headers,body,sourceIp:req.socket.remoteAddress});
+ const result=url.pathname.startsWith('/api/employee/')? (employeeHandler?await employeeHandler({method:req.method,path:url.pathname,body,headers:req.headers,sourceIp:req.socket.remoteAddress}):{statusCode:503,headers:{},body:'Unavailable'}):await dispatch({method:req.method,url:req.url,headers:req.headers,body,sourceIp:req.socket.remoteAddress});
  res.writeHead(result.statusCode,result.headers);res.end(result.body);return;
  }
  if(req.method!=='GET'||!assets.has(url.pathname)){res.writeHead(404);res.end();return;}
