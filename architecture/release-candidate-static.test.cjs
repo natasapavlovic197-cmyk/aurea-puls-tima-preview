@@ -2,6 +2,7 @@
 // Release candidate structural checks. Does not replace browser or real HTTP tests.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
+const crypto=require('node:crypto');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const read=(p)=>fs.readFileSync(path.join(root,p),'utf8');
@@ -21,7 +22,11 @@ const employee=read('zaposleni/index.html');
 const manager=read('rukovodilac/index.html');
 assert.match(employee,/Interaktivna demonstracija/);
 assert.match(manager,/Interaktivna demonstracija/);
-assert.deepEqual(Buffer.from(manager),fs.readFileSync(path.join(root,'locked/manager-v35-approved.html')),'Approved manager demo changed');
+// The V3.5 snapshot is historical; the ten-domain manager source is pinned by premium-manager-template.cjs.
+// Provenance: commit 872e50a287fee66b80ab87c19f09f39ea03a5fa5, exact Git blob.
+const managerBytes=fs.readFileSync(path.join(root,'rukovodilac/index.html'));
+const managerHash=crypto.createHash('sha1').update('blob '+managerBytes.length+'\0').update(managerBytes).digest('hex');
+assert.equal(managerHash,'49a9839e8a007a588d2150e2ff79bbc3a88f3324','Pinned ten-domain manager demo changed');
 assert.deepEqual(Buffer.from(read('portal/index.html')),fs.readFileSync(path.join(root,'locked/portal-b2b-approved.html')),'Approved portal changed');
 const managerEndpoint=read('netlify/functions/aurea-manager-summary.cjs');
 assert.match(managerEndpoint,/AUREA_B2B_MANAGER_DEPLOY_APPROVED/,'Manager deployment gate required');
