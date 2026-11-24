@@ -1,26 +1,19 @@
 'use strict';
-// Read-only credential preflight. Never prints passwords, hashes or connection strings.
-// Run only from a trusted server after setting secrets in its environment.
-const {createEmployeeRuntime}=require('./employee-runtime.cjs');
-async function verifyEmployeeDatabaseAccess({env,Pool}={}){
- const runtime=createEmployeeRuntime({env,Pool});
+// Explicitly approved read-only probe; no runtime, listener, limiter mutation or submit.
+const {poolerConfig,REF}=require('./staging-pooler-config.cjs');
+const {createRestrictedEmployeeAdapter}=require('./restricted-employee-adapter.cjs');
+async function verifyEmployeeDatabaseAccess({env={},Pool,readOnlyApproved=false}={}){
+ if(readOnlyApproved!==true||typeof Pool!=='function')throw Error('Read-only probe not approved');
+ if(['AUREA_B2B_EMPLOYEE_ENABLED','AUREA_B2B_EMPLOYEE_DEPLOY_APPROVED','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED'].some(k=>env[k]!==undefined&&env[k]!=='false'))throw Error('Activation flags must remain disabled');
+ const config=poolerConfig(env);
+ if(env.AUREA_EMPLOYEE_DATABASE_USER!=='aurea_employee_login.'+REF)throw Error('Restricted employee login required');
+ const p=env.AUREA_EMPLOYEE_DATABASE_PASSWORD,l=env.AUREA_STAGING_DATABASE_PASSWORD;
+ if(typeof p!=='string'||p.length<24||typeof l!=='string'||l.length<24||p===l)throw Error('Distinct restricted credentials required');
+ const pool=new Pool({...config,user:env.AUREA_EMPLOYEE_DATABASE_USER,password:p,max:1,connectionTimeoutMillis:4000,idleTimeoutMillis:10000});
  try{
-  // The runtime must not expose a public endpoint during this check.
-  // An invalid hash is intentionally used; it must never consume an invitation.
-  const hash='0'.repeat(64);
-  // The public gateway cannot be exercised without a real trusted source IP and limiter;
-  // independently verify the employee SQL identity and read-only invitation operation.
-  const {createRestrictedEmployeeAdapter}=require('./restricted-employee-adapter.cjs');
-  const pool=new Pool({
-   host:env.AUREA_STAGING_DATABASE_HOST,port:5432,database:env.AUREA_STAGING_DATABASE_NAME,
-   user:'aurea_employee_login',password:env.AUREA_EMPLOYEE_DATABASE_PASSWORD,
-   ssl:{rejectUnauthorized:true},max:1,connectionTimeoutMillis:4000,idleTimeoutMillis:10000
-  });
-  try{
-   const result=await createRestrictedEmployeeAdapter({pool}).invitation(hash);
-   if(!result||result.status==='ready'||typeof result.status!=='string')throw Error('Unexpected invalid-token result');
-   return Object.freeze({employeeLoginVerified:true,invalidTokenRejected:true});
-  }finally{await pool.end()}
- }finally{await runtime.close()}
+ const result=await createRestrictedEmployeeAdapter({pool}).invitation('0'.repeat(64));
+ if(!result||!['unavailable','invalid'].includes(result.status))throw Error('Unexpected invalid-token result');
+ return Object.freeze({employeeLoginVerified:true,invalidTokenRejected:true});
+ }finally{await pool.end()}
 }
 module.exports={verifyEmployeeDatabaseAccess};

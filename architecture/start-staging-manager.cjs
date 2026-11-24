@@ -1,13 +1,16 @@
 'use strict';
 const fs=require('node:fs');
 const path=require('node:path');
-const {Pool}=require('pg');
+const {managerDeploymentPreflight}=require('./manager-deployment-preflight.cjs');
 const {createStagingServer}=require('./staging-manager-server.cjs');
 const {createEmployeeRuntime}=require('./employee-runtime.cjs');
 const {createEmployeeRuntimeHttp}=require('./employee-runtime-http.cjs');
 const {createRestrictedLimiterQuery}=require('./restricted-pg-query.cjs');
 const {poolerConfig}=require('./staging-pooler-config.cjs');
 const env=process.env;
+if(env.AUREA_B2B_MANAGER_ENABLED!=='true'||env.AUREA_B2B_MANAGER_DEPLOY_APPROVED!=='true')throw Error('Manager activation not approved');
+const {Pool}=require('pg');
+if(!managerDeploymentPreflight({env,driverAvailable:typeof Pool==='function'}).ready)throw Error('Manager preflight denied');
 const url=new URL(env.AUREA_SUPABASE_URL);
 if(url.protocol!=='https:'||url.hostname!=='ublzmoroanhlcgpnxilw.supabase.co'||url.pathname!=='/'||url.username||url.password||url.search||url.hash)throw Error('Staging project required');
 if(!env.AUREA_SUPABASE_PUBLISHABLE_KEY?.startsWith('sb_publishable_')||!env.AUREA_LIMITER_SECRET||env.AUREA_LIMITER_SECRET.length<32||!env.AUREA_STAGING_DATABASE_PASSWORD||env.AUREA_STAGING_DATABASE_PASSWORD.length<24)throw Error('Missing staging configuration');
