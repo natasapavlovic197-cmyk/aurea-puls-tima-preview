@@ -105,6 +105,9 @@ jobs:
     timeout-minutes: 5
     environment: aurea-staging-admin
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Inspect scoped Supabase API
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -127,17 +130,25 @@ jobs:
             const p=await get('','Project Settings read');
             if(p.status!==200||(p.data?.ref||p.data?.id)!==ref||p.data?.region!=='eu-west-1'||p.data?.status!=='ACTIVE_HEALTHY')throw Error('Project identity not confirmed');
             const q=await get('/config/database/pooler','Connection Pooling read');
-            const rows=Array.isArray(q.data)?q.data:[q.data];
-            const hosts=new Set(rows.filter(x=>x&&x.pool_mode==='session'&&Number(x.db_port)===5432&&/^aws-\d+-eu-west-1\.pooler\.supabase\.com$/.test(x.db_host||'')).map(x=>x.db_host));
-            if(hosts.size===1)console.log('Verified session pooler: '+[...hosts][0]+':5432');
+            let endpoint;
+            if(q.status===200){
+              try{endpoint=require('./architecture/supabase-pooler-metadata.cjs').sessionEndpoint(q.data)}catch{
+                // Fixed allowlist only. Do not dump payload or connection strings.
+                const rows=Array.isArray(q.data)?q.data:[];
+                console.log('Pooler metadata diagnostics: array='+Array.isArray(q.data)+' rows='+rows.length);
+                for(const k of ['database_type','db_host','db_port','db_user','db_name','pool_mode','connection_string','connectionString']){
+                  console.log(k+' present in rows: '+rows.filter(x=>x&&Object.hasOwn(x,k)).length);
+                }
+              }
+            }
+            if(endpoint)console.log('Shared primary session endpoint: '+endpoint.host+':'+endpoint.port+' (metadata only; TLS login not tested)');
             else console.log('Session pooler unconfirmed; response schema not accepted');
             const ssl=await get('/ssl-enforcement','SSL Enforcement read');
-            const s=await get('/secrets','Edge Function Secrets read');
-            if(s.status===200&&Array.isArray(s.data)){
-              const names=['AUREA_STAGING_DATABASE_PASSWORD','AUREA_EMPLOYEE_DATABASE_PASSWORD','AUREA_LIMITER_SECRET'];
-              console.log('Target secret name conflicts: '+names.filter(n=>s.data.some(x=>x.name===n)).length);
-            }
-            console.log('Secrets write/delete: NOT VERIFIED by read-only requests');
-            if(q.status!==200||hosts.size!==1||ssl.status!==200||s.status!==200)process.exitCode=1;
+            if(ssl.status===200)console.log('SSL enforcement configuration retrieved; actual TLS login not tested');
+            // No secrets request in this metadata job. The documented GET response
+            // includes a value field; do not retrieve it without separate approval.
+            console.log('Secrets inventory: NOT EXECUTED; requires separate edge_functions_secrets_read approval');
+            console.log('Secrets write/delete: NOT VERIFIED; edge_functions_secrets_write requires separate approval');
+            if(q.status!==200||!endpoint||ssl.status!==200)process.exitCode=1;
           })().catch(()=>{console.error('Read-only preflight stopped');process.exitCode=1});
           NODE

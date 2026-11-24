@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {sessionEndpoint,REF}=require('./supabase-pooler-metadata.cjs');
+const host='aws-9-eu-west-1.pooler.supabase.com';
+const row={database_type:'PRIMARY',db_user:'postgres.'+REF,db_host:host,db_port:6543,db_name:'postgres',pool_mode:'transaction',connection_string:'postgresql://postgres.'+REF+':SECRET_SENTINEL@'+host+':6543/postgres'};
+const expected={host,port:5432,mode:'session',connectionVerified:false};
+assert.deepEqual(sessionEndpoint([row]),expected);
+assert.deepEqual(sessionEndpoint([{...row,pool_mode:'session',db_port:5432,connection_string:row.connection_string.replace(':6543',':5432')}]),expected);
+assert.deepEqual(sessionEndpoint([{...row,connectionString:row.connection_string,connection_string:undefined}]),expected);
+assert.deepEqual(sessionEndpoint([row,row]),expected);
+for(const patch of [{database_type:'REPLICA'},{db_host:host+'.evil.com'},{db_user:'postgres.wrong'},{db_port:5432},{pool_mode:'session'},{db_name:'wrong'},{connection_string:'postgresql://postgres.'+REF+'@evil.com:6543/postgres'},{connectionString:'postgresql://postgres.wrong@'+host+':6543/postgres'},{connection_string:undefined}])assert.throws(()=>sessionEndpoint([{...row,...patch}]));
+const other=host.replace('aws-9','aws-8');
+assert.throws(()=>sessionEndpoint([row,{...row,db_host:other,connection_string:row.connection_string.replace(host,other)}]));
+for(const invalid of [null,{},[],[null]])assert.throws(()=>sessionEndpoint(invalid));
+assert.ok(!JSON.stringify(sessionEndpoint([row])).includes('SECRET_SENTINEL'));
+console.log('PASS: shared primary pooler, session port derivation, wrong project/host/URI/ambiguity rejection, credential redaction');
