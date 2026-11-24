@@ -1,0 +1,3 @@
+const test=require('node:test');const assert=require('node:assert/strict');const {assessRelease,required}=require('./commercial-release-gate.cjs');
+test('release fails closed without explicit evidence',()=>{assert.equal(assessRelease().ready,false);assert.equal(assessRelease().missing.length,required.length);assert.equal(assessRelease({operatorApproval:'true'}).ready,false)});
+test('every prerequisite is mandatory and gate never activates',()=>{const all=Object.fromEntries(required.map(k=>[k,true]));assert.equal(assessRelease(all).ready,true);assert.equal(assessRelease(all).activationPerformed,false);for(const k of required)assert.equal(assessRelease({...all,[k]:false}).ready,false)});
