@@ -1,4 +1,4 @@
-name: AUREA P2.4 administrative login read-only
+name: AUREA delivery provisioning preflight (read-only)
 on:
   workflow_dispatch:
 permissions:
@@ -11,38 +11,51 @@ jobs:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
     environment: aurea-staging-admin
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
-      - name: Verify public CA and read-only administrative session
+      - name: Verify staging boundaries and absence of conflicts
         env:
-          PGPASSWORD: ${{ secrets.SUPABASE_ADMIN_DB_PASSWORD }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          umask 077
-          test "$GITHUB_REPOSITORY" = 'natasapavlovic197-cmyk/aurea-puls-tima-preview'
-          test "$GITHUB_REF" = 'refs/heads/integration/employee-ten-domains-step5'
-          if [ -z "${PGPASSWORD:-}" ]; then echo 'BLOCKED: admin secret absent'; exit 1; fi
-          work="$(mktemp -d)"
-          trap 'rm -rf "$work"; unset PGPASSWORD' EXIT
-          curl --fail --silent --show-error --proto '=https' --max-time 20 'https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt' -o "$work/ca.crt"
-          fingerprint="$(openssl x509 -in "$work/ca.crt" -outform DER | sha256sum | cut -d ' ' -f 1)"
-          if [ "$fingerprint" != '807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa' ]; then echo 'BLOCKED: CA differs from verified TLS evidence'; exit 1; fi
-          command -v psql >/dev/null || { echo 'BLOCKED: psql unavailable'; exit 1; }
-          export PGHOST=aws-1-eu-west-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGUSER=postgres.ublzmoroanhlcgpnxilw PGSSLMODE=verify-full PGSSLROOTCERT="$work/ca.crt" PGCONNECT_TIMEOUT=12 PGAPPNAME=aurea_admin_readonly_preflight
-          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000'
-          if ! psql -X -w -qAt -v ON_ERROR_STOP=1 -c "BEGIN READ ONLY; SELECT (session_user='postgres')::text, (current_user='postgres')::text, (current_database()='postgres')::text, (current_setting('default_transaction_read_only')='on')::text, (current_setting('transaction_read_only')='on')::text, EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolcreaterole)::text; ROLLBACK;" >"$work/result" 2>"$work/error"; then
-            echo 'BLOCKED: verified administrative connection or read-only query failed; raw diagnostics suppressed'
-            exit 1
-          fi
-          IFS='|' read -r session_ok current_ok db_ok default_ro tx_ro role_ok extra < "$work/result"
-          for value in "$session_ok" "$current_ok" "$db_ok" "$default_ro" "$tx_ro" "$role_ok"; do
-            case "$value" in true|false) ;; *) echo 'BLOCKED: unexpected diagnostic format'; exit 1;; esac
-          done
-          test -z "$extra" || { echo 'BLOCKED: unexpected extra field'; exit 1; }
-          printf 'session identity: %s\\ncurrent identity: %s\\ndatabase identity: %s\\nstartup read-only: %s\\nexplicit transaction read-only: %s\\nCREATEROLE: %s\\n' "$session_ok" "$current_ok" "$db_ok" "$default_ro" "$tx_ro" "$role_ok"
-          if [ "$session_ok:$current_ok:$db_ok:$tx_ro:$role_ok" != 'true:true:true:true:true' ]; then echo 'BLOCKED: required control failed'; exit 1; fi
-          if [ "$default_ro" != true ]; then echo 'NOTICE: startup read-only option not effective; explicit read-only transaction required'; fi
-          echo 'PASS: authenticated postgres session through expected staging pooler with verify-full and read-only guard'
-          echo 'PASS: administrative role identity and CREATEROLE confirmed'
-          echo 'NO WRITES: no role changes, password-setting SQL, Netlify changes or deployment'
+          node <<'NODE'
+          const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
+          const REF='ublzmoroanhlcgpnxilw';
+          const BRANCH='integration/employee-ten-domains-step5';
+          const names=['AUREA_DELIVERY_AUTH_USER_ID','AUREA_DELIVERY_AUTH_EMAIL','AUREA_DELIVERY_AUTH_PASSWORD','AUREA_INVITATION_HMAC_SECRET','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY','AUREA_DELIVERY_ENABLED','AUREA_DELIVERY_DEPLOY_APPROVED','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED'];
+          let phase='guard';
+          const check=(ok,label)=>{if(!ok)throw Error(label);console.log('PASS '+label)};
+          async function request(base,path,token,body){
+            const r=await fetch(base+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+token,accept:'application/json',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(20000)});
+            if(!r.ok||r.headers.get('link')?.includes('rel="next"'))throw Error('API unavailable or paginated');
+            return r.json();
+          }
+          (async()=>{
+            check(process.env.GITHUB_REPOSITORY==='natasapavlovic197-cmyk/aurea-puls-tima-preview'&&process.env.GITHUB_REF==='refs/heads/'+BRANCH&&process.env.NETLIFY_SITE_ID===SITE&&!!process.env.NETLIFY_AUTH_TOKEN&&!!process.env.SUPABASE_ACCESS_TOKEN,'execution guard');
+            const n=(p)=>request('https://api.netlify.com/api/v1',p,process.env.NETLIFY_AUTH_TOKEN);
+            const s=(p,b)=>request('https://api.supabase.com/v1/projects/'+REF,p,process.env.SUPABASE_ACCESS_TOKEN,b);
+            phase='site guard';
+            const site=await n('/sites/'+SITE);
+            check(site.id===SITE&&site.name==='aurea-puls-tima-preview'&&(site.build_settings?.stop_builds??site.stop_builds)===true&&site.build_settings?.repo_branch==='main'&&typeof site.account_id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(site.account_id),'expected site and stopped builds');
+            phase='environment inventory';
+            const base='/accounts/'+encodeURIComponent(site.account_id)+'/env';
+            for(const p of [base,base+'?site_id='+SITE]){
+              const rows=await n(p);
+              check(Array.isArray(rows)&&rows.every(x=>typeof x.key==='string'),'complete inventory shape');
+              const conflicts=rows.filter(x=>names.includes(x.key)).map(x=>x.key);
+              // Only known key names, never values or raw response.
+              if(conflicts.length){console.log('BLOCKED conflicting names: '+[...new Set(conflicts)].sort().join(', '));throw Error('conflict')}
+            }
+            check(true,'no site or account configuration conflict');
+            phase='Supabase project';
+            const project=await s('');
+            check(project.id===REF&&project.name==='aurea-puls-staging','expected staging project');
+            phase='read-only database checks';
+            const rows=await s('/database/query',{query:"BEGIN READ ONLY; SELECT (SELECT count(*) FROM aurea_delivery_rpc.identities)::int AS identities,(SELECT count(*) FROM aurea_delivery_rpc.scopes)::int AS scopes,(SELECT count(*) FROM aurea_delivery_rpc.identities i JOIN aurea_private.memberships m ON m.user_id=i.user_id)::int AS overlaps,(SELECT count(*) FROM auth.users WHERE lower(email)='aurea-delivery-staging@example.invalid')::int AS conflicts; ROLLBACK;"});
+            check(Array.isArray(rows)&&rows.length===1&&['identities','scopes','overlaps','conflicts'].every(k=>rows[0][k]===0),'no delivery or membership conflicts');
+            console.log('PREFLIGHT ONLY: Auth admin authorization not established; no provisioning, secret generation, email or deploy.');
+          })().catch(()=>{console.error('BLOCKED '+phase+'; raw diagnostics suppressed');process.exitCode=1});
+          NODE
