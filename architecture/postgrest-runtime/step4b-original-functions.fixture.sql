@@ -110,3 +110,21 @@ from answer_totals a
 where a.n>=greatest(5,coalesce(p_min_responses,5))
 order by a.week_start,a.code
 $function$;
+
+-- Match actual staging catalog ACLs in disposable fixture only.
+REVOKE ALL ON FUNCTION aurea_delivery_rpc.impl_delivery_publications(bigint,uuid,uuid,date) FROM PUBLIC,anon,authenticated,service_role,aurea_delivery_login;
+GRANT EXECUTE ON FUNCTION aurea_delivery_rpc.impl_delivery_publications(bigint,uuid,uuid,date) TO postgres;
+REVOKE ALL ON FUNCTION aurea_delivery_rpc.impl_persist_weekly_digest(bigint,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role,aurea_delivery_login;
+GRANT EXECUTE ON FUNCTION aurea_delivery_rpc.impl_persist_weekly_digest(bigint,uuid,jsonb) TO postgres;
+REVOKE ALL ON FUNCTION aurea_private.delivery_publications(bigint,uuid,uuid,date) FROM PUBLIC,anon,authenticated,service_role,aurea_delivery_login;
+GRANT EXECUTE ON FUNCTION aurea_private.delivery_publications(bigint,uuid,uuid,date) TO postgres;
+GRANT EXECUTE ON FUNCTION aurea_private.delivery_publications(bigint,uuid,uuid,date) TO aurea_delivery_login;
+REVOKE ALL ON FUNCTION aurea_private.manager_publications_v2(uuid) FROM PUBLIC,anon,authenticated,service_role,aurea_delivery_login;
+GRANT EXECUTE ON FUNCTION aurea_private.manager_publications_v2(uuid) TO postgres;
+GRANT EXECUTE ON FUNCTION aurea_private.manager_publications_v2(uuid) TO authenticated;
+REVOKE ALL ON FUNCTION aurea_private.persist_weekly_digest(bigint,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role,aurea_delivery_login;
+GRANT EXECUTE ON FUNCTION aurea_private.persist_weekly_digest(bigint,uuid,jsonb) TO postgres;
+GRANT EXECUTE ON FUNCTION aurea_private.persist_weekly_digest(bigint,uuid,jsonb) TO aurea_delivery_login;
+REVOKE ALL ON FUNCTION aurea_private.pulse_summary(uuid,integer) FROM PUBLIC,anon,authenticated,service_role,aurea_delivery_login;
+GRANT EXECUTE ON FUNCTION aurea_private.pulse_summary(uuid,integer) TO postgres;
+GRANT EXECUTE ON FUNCTION aurea_private.pulse_summary(uuid,integer) TO service_role;
