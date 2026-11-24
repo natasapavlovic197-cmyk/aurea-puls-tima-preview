@@ -53,8 +53,9 @@ jobs:
           function verifyDraft(d){
             const meta={id:d?.id===id,site:d?.site_id===SITE,draft:typeof d?.draft==='boolean'?d.draft:null,context:['production','branch-deploy','deploy-preview','dev'].includes(d?.context)?d.context:null,published:!!d?.published_at,state:safeId(d?.state)?d.state:null,requiredFiles:Array.isArray(d?.required)?d.required.length:null,requiredFunctions:Array.isArray(d?.required_functions)?d.required_functions.length:null,requiredEdgeFunctions:Array.isArray(d?.required_edge_functions)?d.required_edge_functions.length:null,schedules:Array.isArray(d?.function_schedules)?d.function_schedules.length:null};
             console.log('DRAFT_METADATA '+JSON.stringify(meta));
-            // Do not treat an absent draft flag or production context as positive proof of isolation.
-            if(!meta.id||!meta.site||meta.draft!==true||meta.published||!['new','preparing','prepared','uploading','uploaded','processing','processed','ready','enqueued','building'].includes(meta.state))throw Error('draft isolation not proven');
+            // Exact ID from run 45421506288 POST draft:true; Netlify documents deploy-preview context for drafts.
+            // Require explicit preview context, reject explicit false, retain unpublished and anchor guards.
+            if(!meta.id||!meta.site||meta.draft===false||meta.context!=='deploy-preview'||meta.published||!['new','preparing','prepared','uploading','uploaded','processing','processed','ready','enqueued','building'].includes(meta.state))throw Error('draft isolation not proven');
             for(const k of ['required_functions','required_edge_functions','function_schedules']){
               if(d[k]!=null&&(!Array.isArray(d[k])||d[k].length!==0))throw Error('unexpected function metadata');
             }
@@ -91,6 +92,8 @@ jobs:
             if(d.state!=='ready'&&(!Array.isArray(d.required)||d.required.some(h=>!Object.values(files).includes(h))))throw Error('unexpected digest');
             if(d.state==='ready'&&Array.isArray(d.required)&&d.required.length)throw Error('ready draft has missing files');
             for(const h of new Set(d.required??[])){
+              await anchor();
+              verifyDraft(await api('GET','/sites/'+SITE+'/deploys/'+id));
               const n=names.find(n=>files['/'+n]===h);
               await api('PUT','/deploys/'+id+'/files/'+encodeURIComponent(n),bytes[n],'application/octet-stream');
             }
@@ -107,12 +110,12 @@ jobs:
             check(true,'production anchor and stopped builds unchanged');
             phase='draft URL';
             const u=new URL(ready.deploy_ssl_url);
+            check(u.protocol==='https:'&&u.hostname===id+'--aurea-puls-tima-preview.netlify.app'&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password,'unique draft URL');
             for(const n of names){
               const response=await fetch(u.origin+'/'+n,{redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});
               if(!response.ok||crypto.createHash('sha1').update(Buffer.from(await response.arrayBuffer())).digest('hex')!==files['/'+n])throw Error('deployed file mismatch');
             }
             check(true,'all six deployed files match artifact digests');
-            check(u.protocol==='https:'&&u.hostname===id+'--aurea-puls-tima-preview.netlify.app'&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password,'unique draft URL');
             console.log('DRAFT_URL '+u.origin);
             console.log('STATIC ONLY: no runtime credential validation, no scheduler, no emails, no publish or restore');
           })().catch(async()=>{
