@@ -91,9 +91,23 @@ jobs:
           PY
           node architecture/signature22-education-visible-qa.cjs
           rm architecture/signature22-education-visible-qa.cjs
-          node architecture/employee-staging-browser-qa.cjs
-          node architecture/premium-manager-browser-qa.cjs
-          node architecture/joint-premium-security-qa.cjs
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('architecture/employee-staging-browser-qa.cjs')
+          s=p.read_text()
+          needle="  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);"
+          assert s.count(needle)==1
+          extra="""  console.log('Employee finale geometry', JSON.stringify(await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('*')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&(r.right>innerWidth+0.5||r.left< -0.5)}).map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,id:e.id,cls:String(e.className).slice(0,150),left:r.left,right:r.right,width:r.width,scrollWidth:e.scrollWidth,clientWidth:e.clientWidth,position:s.position,display:s.display,minWidth:s.minWidth,maxWidth:s.maxWidth,overflowX:s.overflowX,whiteSpace:s.whiteSpace}}).slice(0,50)}))));
+  await page.screenshot({path:'/tmp/employee-finale-'+width+'.png',fullPage:true});
+"""
+          p.with_name('signature22-employee-diagnostic-qa.cjs').write_text(s.replace(needle,extra+needle))
+          PY
+          status=0
+          node architecture/signature22-employee-diagnostic-qa.cjs || status=1
+          node architecture/premium-manager-browser-qa.cjs || status=1
+          node architecture/joint-premium-security-qa.cjs || status=1
+          rm architecture/signature22-employee-diagnostic-qa.cjs
+          test "$status" = 0
           sha256sum -c /tmp/signature.sha256
           mkdir /tmp/verified
           awk '{print $2}' /tmp/signature.sha256 | xargs -d '\n' -I '{}' cp --parents '{}' /tmp/verified
