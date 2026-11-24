@@ -17,13 +17,24 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import socket, ssl, struct, sys, os
+          import socket, ssl, struct, sys, os, urllib.request, hashlib
           HOST = "aws-1-eu-west-1.pooler.supabase.com"
           PORT = 5432
           phase = "guard"
           try:
               if os.environ.get("GITHUB_REF") != "refs/heads/integration/employee-ten-domains-step5" or os.environ.get("GITHUB_REPOSITORY") != "natasapavlovic197-cmyk/aurea-puls-tima-preview":
                   raise RuntimeError("guard")
+              phase = "public CA download"
+              url = "https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt"
+              with urllib.request.urlopen(url, timeout=15) as response:
+                  if response.geturl() != url:
+                      raise RuntimeError("unexpected CA redirect")
+                  data = response.read(16385)
+              if len(data)>16384 or data.count(b"-----BEGIN CERTIFICATE-----")!=1 or b"PRIVATE KEY" in data:
+                  raise RuntimeError("unexpected CA format")
+              pem = data.decode("ascii")
+              der = ssl.PEM_cert_to_DER_cert(pem)
+              print("Public CA SHA256: " + hashlib.sha256(der).hexdigest(), flush=True)
               phase = "DNS"
               records = socket.getaddrinfo(HOST, PORT, type=socket.SOCK_STREAM)
               if not records:
@@ -39,7 +50,7 @@ jobs:
                       raise RuntimeError("SSL not accepted")
                   print("PASS PostgreSQL SSLRequest: accepted", flush=True)
                   phase = "TLS certificate and hostname"
-                  ctx = ssl.create_default_context()
+                  ctx = ssl.create_default_context(cadata=pem)
                   ctx.minimum_version = ssl.TLSVersion.TLSv1_2
                   assert ctx.check_hostname and ctx.verify_mode == ssl.CERT_REQUIRED
                   with ctx.wrap_socket(sock, server_hostname=HOST) as tls:
@@ -52,6 +63,9 @@ jobs:
                       print("PASS hostname verification", flush=True)
                       print("PASS TLS protocol: " + tls.version(), flush=True)
               print("NO AUTH: no PostgreSQL startup message, credentials, SQL, or deployment. Pooler endpoint only; project and login identity not verified.")
+          except ssl.SSLCertVerificationError as e:
+              print("FAIL " + phase + ": verify_code=" + str(e.verify_code) + "; " + e.verify_message, file=sys.stderr)
+              sys.exit(1)
           except Exception as e:
               print("FAIL " + phase + ": " + type(e).__name__, file=sys.stderr)
               sys.exit(1)
