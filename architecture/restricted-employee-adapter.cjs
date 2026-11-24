@@ -3,7 +3,7 @@
 // Requires a separate LOGIN role with EXECUTE on exactly two reviewed RPCs.
 // Not connected to the public Netlify endpoint until real-role tests pass.
 const HASH=/^[a-f0-9]{64}$/;
-const CODES=/^[A-Za-z0-9_-]{1,32}$/;
+const CODES=/^[A-Z_]{1,32}$/;
 const LOGIN='aurea_employee_login';
 function createRestrictedEmployeeAdapter({pool}={}){
  if(typeof pool?.connect!=='function')throw new TypeError('Employee-only SQL pool required');
@@ -24,7 +24,7 @@ function createRestrictedEmployeeAdapter({pool}={}){
    return execute('select public.aurea_employee_invitation($1::text) as result',[hash]);
   },
   submit(hash,answers){
-   if(typeof hash!=='string'||!HASH.test(hash)||!Array.isArray(answers)||answers.length!==4)throw new TypeError('Invalid employee submission');
+   if(typeof hash!=='string'||!HASH.test(hash)||!Array.isArray(answers)||answers.length!==6)throw new TypeError('Invalid employee submission');
    const seen=new Set();
    for(const a of answers){
     if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!['code','rating'].includes(k))||

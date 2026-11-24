@@ -2,10 +2,10 @@
 // Server-only boundary for the EXISTING public.aurea_employee_* hash/code protocol.
 // Not a deployed function: dependencies must be injected by a trusted server runtime.
 // Never log hashes, answers, IPs or SQL details.
-const HASH=/^[a-f0-9]{64}$/i, CODE=/^[A-Za-z0-9_-]{1,32}$/;
+const HASH=/^[a-f0-9]{64}$/, CODE=/^[A-Z_]{1,32}$/;
 const reply=(statusCode,status)=>({statusCode,headers:{'content-type':'application/json','cache-control':'no-store','referrer-policy':'no-referrer'},body:JSON.stringify({status})});
 function validAnswers(a){
- if(!Array.isArray(a)||a.length!==4)return false;
+ if(!Array.isArray(a)||a.length!==6)return false;
  const seen=new Set();
  for(const item of a){
   if(!item||typeof item!=='object'||Array.isArray(item)||Object.keys(item).some(k=>!['code','rating'].includes(k))||typeof item.code!=='string'||!CODE.test(item.code)||seen.has(item.code)||!Number.isInteger(item.rating)||item.rating<1||item.rating>6)return false;
@@ -34,9 +34,9 @@ function createEmployeeGateway({adapter,rateLimit}={}){
    if(body.action==='submit')return reply(result?.status==='submitted'?200:400,result?.status==='submitted'?'submitted':'unavailable');
    if(result?.status!=='ready')return reply(404,'unavailable');
    const q=result.questions;
-   if(!Array.isArray(q)||q.length!==4||!q.every(x=>x&&typeof x.code==='string'&&CODE.test(x.code)&&typeof x.wording==='string'&&x.wording.length>0&&Number.isInteger(x.position)&&x.position>=1&&x.position<=4))return reply(503,'unavailable');
+   if(!Array.isArray(q)||q.length!==6||!q.every(x=>x&&typeof x.code==='string'&&CODE.test(x.code)&&typeof x.wording==='string'&&x.wording.length>0&&Number.isInteger(x.position)&&x.position>=1&&x.position<=6))return reply(503,'unavailable');
    const positions=new Set(q.map(x=>x.position)),codes=new Set(q.map(x=>x.code));
-   if(positions.size!==4||codes.size!==4)return reply(503,'unavailable');
+   if(positions.size!==6||codes.size!==6)return reply(503,'unavailable');
    const safe=q.map(({code,wording,position})=>({code,wording,position}));
    return {statusCode:200,headers:{'content-type':'application/json','cache-control':'no-store','referrer-policy':'no-referrer'},body:JSON.stringify({status:'ready',questions:safe})};
   }catch{return reply(503,'unavailable')}

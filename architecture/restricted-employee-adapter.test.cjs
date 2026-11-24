@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const {createRestrictedEmployeeAdapter}=require('./restricted-employee-adapter.cjs');
-const hash='a'.repeat(64),answers=['J1','K1','O1','P1'].map(code=>({code,rating:4}));
+const hash='a'.repeat(64),answers=['A_CLARITY','A_WORKLOAD','A_SPEAKUP','R_LEADER_HELP','R_INFO','R_PRIORITY'].map(code=>({code,rating:4}));
 (async()=>{
  let queries=[],releases=0,login='aurea_employee_login';
  const pool={async connect(){return {async query(sql,params){queries.push([sql,params]);if(sql.includes('session_user as login_user'))return {rows:[{login_user:login,active_user:login,superuser:false,bypassrls:false}]};return {rows:[{result:sql.includes('invitation')?{status:'ready',questions:[]}:{status:'submitted'}}]};},release(discard){assert.equal(discard,true);releases++}}}};
@@ -13,6 +13,7 @@ const hash='a'.repeat(64),answers=['J1','K1','O1','P1'].map(code=>({code,rating:
  assert.equal(releases,2);
  assert.throws(()=>adapter.submit(hash,answers.map(x=>({...x,email:'private'}))),TypeError);
  assert.throws(()=>adapter.invitation('invalid'),TypeError);
+ for(const invalid of [answers.slice(0,4),answers.slice(0,5),[...answers,answers[0]],answers.map(x=>({...x,rating:7})),answers.map(x=>({...x,code:'J1'}))])assert.throws(()=>adapter.submit(hash,invalid),TypeError);
  login='postgres';
  await assert.rejects(()=>adapter.invitation(hash),/Untrusted/);
  assert.equal(queries.filter(x=>x[0].includes('public.aurea_employee_')).length,2);

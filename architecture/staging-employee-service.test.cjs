@@ -10,8 +10,8 @@ const pool={async connect(){return {
  release(){}
 }}};
 const adapter={
- async invitation(h){assert.equal(h,hash);return {status:'ready',questions:['J1','K1','O1','P1'].map((code,i)=>({code,wording:'Pitanje '+(i+1),position:i+1}))}},
- async submit(h,a){assert.equal(h,hash);assert.equal(a.length,4);return {status:'submitted'}}
+ async invitation(h){assert.equal(h,hash);return {status:'ready',questions:['A_CLARITY','A_WORKLOAD','A_SPEAKUP','R_LEADER_HELP','R_INFO','R_PRIORITY'].map((code,i)=>({code,wording:'Pitanje '+(i+1),position:i+1}))}},
+ async submit(h,a){assert.equal(h,hash);assert.equal(a.length,6);return {status:'submitted'}}
 };
 const event=(action,extra={})=>({httpMethod:'POST',headers:{'content-type':'application/json'},requestContext:{identity:{sourceIp:'192.0.2.3'}},body:JSON.stringify({action,hash,...extra})});
 (async()=>{
@@ -19,7 +19,7 @@ const event=(action,extra={})=>({httpMethod:'POST',headers:{'content-type':'appl
  assert.throws(()=>createStagingEmployeeService({pool,limiterSecret:'x'.repeat(64)}),TypeError);
  const handler=createStagingEmployeeService({pool,limiterSecret:'x'.repeat(64),adapter}).handler;
  assert.equal((await handler(event('invitation'))).statusCode,200);
- assert.equal((await handler(event('submit',{answers:['J1','K1','O1','P1'].map(code=>({code,rating:5}))}))).statusCode,200);
+ assert.equal((await handler(event('submit',{answers:['A_CLARITY','A_WORKLOAD','A_SPEAKUP','R_LEADER_HELP','R_INFO','R_PRIORITY'].map(code=>({code,rating:5}))}))).statusCode,200);
  assert.ok(calls.includes('SET LOCAL ROLE aurea_rate_limiter'));assert.ok(calls.includes(SQL));
  assert.equal((await handler({...event('invitation'),requestContext:{}})).statusCode,429);
  const failPool={async connect(){throw Error('Database unavailable')}};
