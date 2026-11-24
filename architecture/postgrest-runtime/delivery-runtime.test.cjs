@@ -21,8 +21,11 @@ test('activation flags rejected before credential or network access',()=>{
  const f=fixture(patch);assert.throws(()=>preparePostgrestDeliveryRuntime(f.options),/activation not approved/);assert.deepEqual(f.counts(),[0,0]);
  }
 });
-test('missing server credential reader rejected',()=>{
- const f=fixture();assert.throws(()=>preparePostgrestDeliveryRuntime({...f.options,readCredentials:undefined}),/credential reader required/);assert.deepEqual(f.counts(),[0,0]);
+test('default reader is lazy while runtime disabled',async()=>{
+ const f=fixture(),r=preparePostgrestDeliveryRuntime({...f.options,readCredentials:undefined});assert.deepEqual(await r.processNext(),{status:'disabled'});await r.close();assert.deepEqual(f.counts(),[0,0]);
+});
+test('explicit invalid reader rejected',()=>{
+ const f=fixture();assert.throws(()=>preparePostgrestDeliveryRuntime({...f.options,readCredentials:null}),/credential reader required/);assert.deepEqual(f.counts(),[0,0]);
 });
 test('invalid transport rejected without falling back to global fetch',()=>{
  const f=fixture();assert.throws(()=>preparePostgrestDeliveryRuntime({...f.options,fetchImpl:null}),/Invalid server Auth configuration/);assert.deepEqual(f.counts(),[0,0]);
