@@ -1,4 +1,4 @@
-name: AUREA P3 reconcile existing static draft (approval required)
+name: AUREA P3 one controlled ZIP draft (approval required)
 on:
   workflow_dispatch:
 permissions:
@@ -20,7 +20,7 @@ jobs:
           path: candidate
           github-token: ${{ github.token }}
           run-id: 45421506288
-      - name: Resume exact existing draft only; never create, publish or restore
+      - name: Create one ZIP draft; never publish or restore
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
@@ -31,15 +31,16 @@ jobs:
           const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
           const ANCHOR='6b0430517b51555c820d7d35';
           const BRANCH='integration/employee-ten-domains-step5';
-          const TITLE='AUREA P3 static draft 98ad4c0';
+          const TITLE='AUREA P3 ZIP draft 98ad4c0';
+          const OLD='6b05a80c7dcf62501e804f08';
           const names=['employee.bundle.js','employee.html','index.html','manager-login.bundle.js','manager-login.css','staging-config.js'];
           const keys=['AUREA_DELIVERY_AUTH_USER_ID','AUREA_DELIVERY_AUTH_EMAIL','AUREA_DELIVERY_AUTH_PASSWORD','AUREA_INVITATION_HMAC_SECRET','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY'];
           const flags=['AUREA_DELIVERY_ENABLED','AUREA_DELIVERY_DEPLOY_APPROVED','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED'];
-          let phase='guard',id='6b05a80c7dcf62501e804f08';
+          let phase='guard',id=null,attempted=false;
           const check=(ok,label)=>{if(!ok)throw Error('blocked');console.log('PASS '+label)};
           const safeId=x=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(x);
           async function api(method,path,body,type='application/json'){
-            const r=await fetch('https://api.netlify.com/api/v1'+path,{method,headers:{authorization:'Bearer '+process.env.NETLIFY_AUTH_TOKEN,accept:'application/json',...(body!==undefined?{'content-type':type}:{})},...(body===undefined?{}:{body:type==='application/json'?JSON.stringify(body):body}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(25000)});
+            const r=await fetch('https://api.netlify.com/api/v1'+path,{method,headers:{authorization:'Bearer '+process.env.NETLIFY_AUTH_TOKEN,accept:'application/json',...(body!==undefined?{'content-type':type}:{})},...(body===undefined?{}:{body:type==='application/json'?JSON.stringify(body):body}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(method==='POST'?120000:25000)});
             if(!r.ok){await r.body?.cancel();throw Error('HTTP failure')}
             if(method==='GET'&&r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('incomplete inventory')}
             if(method==='PUT'){await r.body?.cancel();return null;}
@@ -53,7 +54,7 @@ jobs:
           function verifyDraft(d){
             const meta={id:d?.id===id,site:d?.site_id===SITE,draft:typeof d?.draft==='boolean'?d.draft:null,context:['production','branch-deploy','deploy-preview','dev'].includes(d?.context)?d.context:null,published:!!d?.published_at,state:safeId(d?.state)?d.state:null,requiredFiles:Array.isArray(d?.required)?d.required.length:null,requiredFunctions:Array.isArray(d?.required_functions)?d.required_functions.length:null,requiredEdgeFunctions:Array.isArray(d?.required_edge_functions)?d.required_edge_functions.length:null,schedules:Array.isArray(d?.function_schedules)?d.function_schedules.length:null};
             console.log('DRAFT_METADATA '+JSON.stringify(meta));
-            // Exact ID from run 45421506288 POST draft:true; Netlify documents deploy-preview context for drafts.
+            // Require exact new ID and unpublished deploy-preview context.
             // Require explicit preview context, reject explicit false, retain unpublished and anchor guards.
             if(!meta.id||!meta.site||meta.draft===false||meta.context!=='deploy-preview'||meta.published||!['new','preparing','prepared','uploading','uploaded','processing','processed','ready','enqueued','building'].includes(meta.state))throw Error('draft isolation not proven');
             for(const k of ['required_functions','required_edge_functions','function_schedules']){
@@ -83,25 +84,33 @@ jobs:
               if(rows.length!==1||v.is_secret!==true||v.scopes?.length!==1||v.scopes[0]!=='functions'||v.values?.length!==1||v.values[0].context!=='branch'||v.values[0].context_parameter!==BRANCH)throw Error('secret scope drift');
             }
             check(true,'existing branch secrets unchanged; not injected');
-            phase='reconcile existing draft';
+            phase='ZIP packaging';
+            const cp=require('node:child_process');
+            const zipPath=process.cwd()+'/candidate-static.zip';
+            cp.execFileSync('zip',['-q','-X',zipPath,...names],{cwd:'candidate',stdio:'pipe'});
+            check(cp.execFileSync('unzip',['-Z1',zipPath],{encoding:'utf8'}).trim().split('\n').sort().join('|')===names.join('|'),'ZIP contains exact six files at root');
+            for(const n of names)check(crypto.createHash('sha1').update(cp.execFileSync('unzip',['-p',zipPath,n],{maxBuffer:6000000})).digest('hex')===files['/'+n],'ZIP digest '+n);
+            phase='one ZIP draft creation';
             await anchor();
-            const d=await api('GET','/sites/'+SITE+'/deploys/'+id);
+            if(process.env.GITHUB_RUN_ATTEMPT!=='1')throw Error('rerun prohibited');
+            const old=await api('GET','/sites/'+SITE+'/deploys/'+OLD);
+            check(old.id===OLD&&old.site_id===SITE&&old.context==='deploy-preview'&&!old.published_at,'old draft untouched');
+            const inventory=await api('GET','/sites/'+SITE+'/deploys?per_page=100');
+            check(Array.isArray(inventory)&&!inventory.some(x=>x.title===TITLE),'no prior ZIP draft with this title');
+            await anchor();
+            attempted=true;
+            const d=await api('POST','/sites/'+SITE+'/deploys?draft=true&production=false&title='+encodeURIComponent(TITLE),fs.readFileSync(zipPath),'application/zip');
+            if(!/^[a-f0-9]{24}$/.test(d?.id??'')||d.id===OLD||d.id===ANCHOR)throw Error('new draft ID unconfirmed');
+            id=d.id;
+            console.log('DRAFT_ID '+id);
             verifyDraft(d);
             await anchor();
-            phase='upload draft files';
-            if(d.state!=='ready'&&(!Array.isArray(d.required)||d.required.some(h=>!Object.values(files).includes(h))))throw Error('unexpected digest');
-            if(d.state==='ready'&&Array.isArray(d.required)&&d.required.length)throw Error('ready draft has missing files');
-            for(const h of new Set(d.required??[])){
-              await anchor();
-              verifyDraft(await api('GET','/sites/'+SITE+'/deploys/'+id));
-              const n=names.find(n=>files['/'+n]===h);
-              await api('PUT','/deploys/'+id+'/files/'+encodeURIComponent(n),bytes[n],'application/octet-stream');
-            }
             phase='wait for draft';
             let ready;
-            for(let i=0;i<36;i++){
+            for(let i=0;i<48;i++){
               const v=await api('GET','/sites/'+SITE+'/deploys/'+id);
               verifyDraft(v);
+              await anchor();
               if(v.state==='ready'){ready=v;break;}
               await new Promise(r=>setTimeout(r,3000));
             }
@@ -120,7 +129,7 @@ jobs:
             console.log('STATIC ONLY: no runtime credential validation, no scheduler, no emails, no publish or restore');
           })().catch(async()=>{
             console.error('BLOCKED '+phase+'; raw diagnostics suppressed');
-            console.error('RECONCILE draft '+id+'; do not blindly retry or restore');
+            if(attempted)console.error('RECONCILE ZIP draft '+(id||'unknown ID')+'; do not rerun or restore');
             try{await anchor();console.log('PASS production anchor unchanged after failure')}catch{console.error('CRITICAL production anchor unconfirmed; manual review required')}
             process.exitCode=1;
           });
