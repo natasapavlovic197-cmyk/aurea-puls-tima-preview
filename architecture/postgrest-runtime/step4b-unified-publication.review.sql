@@ -26,7 +26,8 @@ REVOKE ALL ON TABLE aurea_private.privacy_cycle_seals_v1,aurea_private.privacy_p
 CREATE FUNCTION aurea_private.seal_privacy_cycle_v1() RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
 BEGIN
- IF NEW.state<>'closed' OR OLD.state='closed' OR NEW.model_version<>2 THEN RETURN NEW; END IF;
+ IF NEW.state<>'closed' OR NEW.model_version<>2 THEN RETURN NEW; END IF;
+ IF TG_OP='UPDATE' THEN IF OLD.state='closed' THEN RETURN NEW; END IF; END IF;
  INSERT INTO aurea_private.privacy_cycle_seals_v1(cycle_id,organization_id,week_start)
  VALUES(NEW.id,NEW.organization_id,NEW.week_start) ON CONFLICT DO NOTHING;
  IF NOT FOUND THEN RETURN NEW; END IF;
@@ -43,7 +44,7 @@ BEGIN
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION aurea_private.seal_privacy_cycle_v1() FROM PUBLIC,anon,authenticated,service_role;
-CREATE TRIGGER privacy_seal_on_close_v1 AFTER UPDATE OF state ON aurea_private.cycles
+CREATE TRIGGER privacy_seal_on_close_v1 AFTER INSERT OR UPDATE OF state ON aurea_private.cycles
  FOR EACH ROW EXECUTE FUNCTION aurea_private.seal_privacy_cycle_v1();
 
 CREATE OR REPLACE FUNCTION aurea_delivery_rpc.impl_delivery_publications(p_job bigint, p_lease uuid, p_org uuid, p_week date)

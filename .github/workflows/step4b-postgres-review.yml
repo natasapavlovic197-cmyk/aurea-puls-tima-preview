@@ -1,0 +1,56 @@
+name: AUREA Step 4B PostgreSQL isolated review
+on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths:
+      - '.github/workflows/step4b-postgres-review.yml'
+      - 'architecture/postgrest-runtime/step4b-*.sql'
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: synthetic-only
+          POSTGRES_DB: aurea_fixture
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-only
+      PGDATABASE: aurea_fixture
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Apply review SQL to disposable service only
+        run: |
+          set -eu
+          test "$PGHOST" = 127.0.0.1
+          test "$PGDATABASE" = aurea_fixture
+          cd architecture/postgrest-runtime
+          psql -X -v ON_ERROR_STOP=1 -f step4b-postgres-fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f step4b-unified-publication.review.sql
+          psql -X -v ON_ERROR_STOP=1 -f step4b-unified-publication.synthetic.sql
+          psql -X -v ON_ERROR_STOP=1 -f step4b-postgres-actual.synthetic.sql
+      - name: Concurrent duplicate closure on disposable database
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -c "INSERT INTO aurea_private.cycles VALUES ('00000000-0000-0000-0000-000000000006','10000000-0000-0000-0000-000000000001','2026-12-07','open',2)"
+          psql -X -v ON_ERROR_STOP=1 -c "BEGIN; UPDATE aurea_private.cycles SET state='closed' WHERE id='00000000-0000-0000-0000-000000000006'; SELECT pg_sleep(2); COMMIT;" &
+          first=$!
+          psql -X -v ON_ERROR_STOP=1 -c "UPDATE aurea_private.cycles SET state='closed' WHERE id='00000000-0000-0000-0000-000000000006'"
+          wait "$first"
+          test "$(psql -X -Atc "SELECT count(*) FROM aurea_private.privacy_cycle_seals_v1 WHERE cycle_id='00000000-0000-0000-0000-000000000006'")" = 1
+          echo "PASS concurrent duplicate close"
