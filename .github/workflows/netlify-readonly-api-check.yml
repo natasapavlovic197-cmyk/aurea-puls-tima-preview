@@ -1,86 +1,58 @@
-name: AUREA P2.4 Netlify metadata preflight
+name: AUREA P2.4 pooler TLS preflight (no credentials)
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: aurea-netlify-readonly-api-check
+  group: aurea-staging-tls-preflight
   cancel-in-progress: false
 jobs:
-  metadata:
+  tls:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
-    environment: aurea-staging-admin
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 3
     steps:
-      - name: Inspect allowlisted metadata only
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+      - name: DNS TCP PostgreSQL SSLRequest and verified TLS
         shell: bash
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
-          const BRANCH='integration/employee-ten-domains-step5';
-          const keys=['AUREA_STAGING_DATABASE_PASSWORD','AUREA_LIMITER_SECRET','AUREA_STAGING_DATABASE_HOST','AUREA_STAGING_DATABASE_USER','AUREA_STAGING_DATABASE_NAME','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED','DB_PASSWORD','HMAC_SECRET','AUREA_EMPLOYEE_DATABASE_PASSWORD'];
-          const flags=new Set(['AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED']);
-          const scopes=new Set(['builds','functions','runtime','post-processing','post_processing']);
-          const contexts=new Set(['all','dev','dev-server','branch-deploy','deploy-preview','production','branch']);
-          let phase='configuration';
-          function check(ok,label){ console.log((ok?'PASS ':'BLOCKED ')+label); if(!ok)process.exitCode=1; return ok; }
-          function projectRows(rows){
-           if(!Array.isArray(rows)||rows.some(r=>!r||typeof r.key!=='string'))throw Error('schema');
-           return rows.filter(r=>keys.includes(r.key)).map(r=>({
-            key:r.key, secret:r.is_secret===true,
-            functionsOnly:Array.isArray(r.scopes)&&r.scopes.length===1&&r.scopes[0]==='functions',
-            scopeKnown:Array.isArray(r.scopes)&&r.scopes.length>0&&r.scopes.every(s=>scopes.has(s)),
-            contextsKnown:Array.isArray(r.values)&&r.values.length>0&&r.values.every(v=>v&&contexts.has(v.context)),
-            exactBranchOnly:Array.isArray(r.values)&&r.values.length>0&&r.values.every(v=>v&&v.context==='branch'&&v.context_parameter===BRANCH),
-            flagPresent:flags.has(r.key)
-           }));
-          }
-          (async()=>{
-           if(process.env.GITHUB_REF!=='refs/heads/'+BRANCH||process.env.GITHUB_REPOSITORY!=='natasapavlovic197-cmyk/aurea-puls-tima-preview'||process.env.NETLIFY_SITE_ID!==SITE||!process.env.NETLIFY_AUTH_TOKEN)throw Error('guard');
-           const token=process.env.NETLIFY_AUTH_TOKEN;
-           async function get(path,label){
-            phase=label;
-            const r=await fetch('https://api.netlify.com/api/v1'+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(20000)});
-            console.log(label+' HTTP '+r.status);
-            if(r.status!==200){await r.body?.cancel();throw Error('http');}
-            if(r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('pagination');}
-            return r.json();
-           }
-           const site=await get('/sites/'+SITE,'site metadata');
-           if(!check(site.id===SITE&&site.name==='aurea-puls-tima-preview','site identity'))return;
-           if(!check((site.build_settings?.stop_builds??site.stop_builds)===true,'builds stopped'))return;
-           if(!check(site.build_settings?.repo_branch==='main','production branch remains main'))return;
-           const repo=site.build_settings?.repo_url??site.repo_url??'';
-           if(!check(typeof repo==='string'&&/^https:\/\/github\.com\/natasapavlovic197-cmyk\/aurea-puls-tima-preview(?:\.git)?\/?$/.test(repo),'repository identity'))return;
-           const allowed=site.build_settings?.allowed_branches;
-           console.log('Branch deploy allowlist: '+(Array.isArray(allowed)?(allowed.includes(BRANCH)?'exact branch listed':'exact branch not listed'):'unconfirmed'));
-           if(!check(typeof site.account_id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(site.account_id),'owning account identified'))return;
-           const account=encodeURIComponent(site.account_id);
-           const accounts=await get('/accounts','team metadata');
-           const matches=Array.isArray(accounts)?accounts.filter(x=>x.id===site.account_id):[];
-           if(!check(matches.length===1,'owning team unique'))return;
-           check(matches[0].type_name==='Pro','Pro plan reported');
-           const base='/accounts/'+account+'/env';
-           const local=projectRows(await get(base+'?site_id='+SITE,'site variable metadata'));
-           const shared=projectRows(await get(base,'team variable metadata'));
-           const fn=projectRows(await get(base+'?site_id='+SITE+'&scope=functions','Functions filter'));
-           console.log('INFO Functions filter accepted; write entitlement and exact branch write support NOT VERIFIED');
-           for(const [label,rows] of [['site',local],['team',shared]]){
-            for(const key of keys){
-             const found=rows.filter(r=>r.key===key);
-             console.log(label+' '+key+': '+(found.length?'present':'not returned'));
-             for(const row of found)console.log(JSON.stringify(row));
-            }
-           }
-           check(local.filter(r=>r.flagPresent).length===0&&shared.filter(r=>r.flagPresent).length===0,'activation flags absent in returned inventories (present means stop, even if false)');
-           check(local.filter(r=>!r.flagPresent).length===0&&shared.filter(r=>!r.flagPresent).length===0,'no target key conflicts in returned inventories');
-           check(fn.every(r=>local.some(x=>x.key===r.key)),'Functions inventory consistent with site inventory');
-           console.log('BLOCKED FOR WRITES: GET cannot prove token write privilege, conditional rollback, complete shared coverage or future branch-only scope enforcement.');
-           console.log('NO WRITES. No values logged; no deployment. Result is metadata inspection only.');
-          })().catch(()=>{console.error('BLOCKED: '+phase+' request or schema failed; response suppressed');process.exitCode=1;});
-          NODE
+          python3 - <<'PY'
+          import socket, ssl, struct, sys, os
+          HOST = "aws-1-eu-west-1.pooler.supabase.com"
+          PORT = 5432
+          phase = "guard"
+          try:
+              if os.environ.get("GITHUB_REF") != "refs/heads/integration/employee-ten-domains-step5" or os.environ.get("GITHUB_REPOSITORY") != "natasapavlovic197-cmyk/aurea-puls-tima-preview":
+                  raise RuntimeError("guard")
+              phase = "DNS"
+              records = socket.getaddrinfo(HOST, PORT, type=socket.SOCK_STREAM)
+              if not records:
+                  raise RuntimeError("no records")
+              print("PASS DNS: resolved", flush=True)
+              phase = "TCP"
+              with socket.create_connection((HOST, PORT), timeout=12) as sock:
+                  sock.settimeout(12)
+                  print("PASS TCP: port 5432", flush=True)
+                  phase = "PostgreSQL SSLRequest"
+                  sock.sendall(struct.pack("!II", 8, 80877103))
+                  if sock.recv(1) != b"S":
+                      raise RuntimeError("SSL not accepted")
+                  print("PASS PostgreSQL SSLRequest: accepted", flush=True)
+                  phase = "TLS certificate and hostname"
+                  ctx = ssl.create_default_context()
+                  ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+                  assert ctx.check_hostname and ctx.verify_mode == ssl.CERT_REQUIRED
+                  with ctx.wrap_socket(sock, server_hostname=HOST) as tls:
+                      cert = tls.getpeercert()
+                      if not cert or not cert.get("notAfter"):
+                          raise RuntimeError("certificate missing")
+                      if ssl.cert_time_to_seconds(cert["notAfter"]) <= __import__("time").time():
+                          raise RuntimeError("expired")
+                      print("PASS certificate trust chain and validity", flush=True)
+                      print("PASS hostname verification", flush=True)
+                      print("PASS TLS protocol: " + tls.version(), flush=True)
+              print("NO AUTH: no PostgreSQL startup message, credentials, SQL, or deployment. Pooler endpoint only; project and login identity not verified.")
+          except Exception as e:
+              print("FAIL " + phase + ": " + type(e).__name__, file=sys.stderr)
+              sys.exit(1)
+          PY
