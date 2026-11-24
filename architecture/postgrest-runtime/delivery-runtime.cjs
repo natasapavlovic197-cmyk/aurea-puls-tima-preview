@@ -1,8 +1,9 @@
 'use strict';
 const {readServerConfig,prepareDeliveryIdentity}=require('./delivery-identity.cjs');
+const {createDeliveryCredentialReader}=require('./delivery-credentials.cjs');
 const {createSupabaseDeliveryAuth}=require('./delivery-supabase-auth.cjs');
 // Server-only composition. No scheduler registration, provider, or activation path.
-function preparePostgrestDeliveryRuntime({env={},readCredentials,fetchImpl=globalThis.fetch,clock=Date.now,origin}={}){
+function preparePostgrestDeliveryRuntime({env=process.env,readCredentials=createDeliveryCredentialReader(env),fetchImpl=globalThis.fetch,clock=Date.now,origin}={}){
  const c=readServerConfig(env);
  if(typeof readCredentials!=='function')throw Error('Server credential reader required');
  const auth=createSupabaseDeliveryAuth({url:c.url,key:c.key,identityId:c.identityId,readCredentials,fetchImpl,clock});
