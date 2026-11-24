@@ -42,7 +42,7 @@ function checkAssets(){
  const styles=s=>s.match(/<style\b[^>]*>[\s\S]*?<\/style>/g);
  assert.deepEqual(styles(b.toString()),styles(fs.readFileSync('dist-staging-manager/'+built,'utf8')));
  }
- for(const f of fs.readdirSync('dist-staging-manager')){
+ for(const f of fs.readdirSync('dist-staging-manager',{recursive:true}).filter(f=>fs.statSync('dist-staging-manager/'+f).isFile())){
  const s=fs.readFileSync('dist-staging-manager/'+f,'utf8');
  for(const forbidden of [secret,privateField,'AUREA_STAGING_DATABASE_PASSWORD','AUREA_EMPLOYEE_DATABASE_PASSWORD','AUREA_LIMITER_SECRET','SUPABASE_ACCESS_TOKEN','DEMO_N','favorableCounts','sessionStorage.getItem(AUREA_DEMO_ACTIVITY_KEY)'])assert.ok(!s.includes(forbidden),f+' contains forbidden marker '+forbidden);
  }

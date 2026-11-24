@@ -1,10 +1,6 @@
 name: AUREA PostgREST live integration
 on:
-  push:
-    branches: [integration/employee-ten-domains-step5]
-    paths:
-      - 'architecture/postgrest-runtime/**'
-      - '.github/workflows/postgrest-live-integration.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

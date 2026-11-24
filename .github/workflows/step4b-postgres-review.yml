@@ -20,7 +20,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd 'pg_isready -U postgres -d aurea_fixture'
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -54,3 +54,8 @@ jobs:
           wait "$first"
           test "$(psql -X -Atc "SELECT count(*) FROM aurea_private.privacy_cycle_seals_v1 WHERE cycle_id='00000000-0000-0000-0000-000000000006'")" = 1
           echo "PASS concurrent duplicate close"
+      - name: Submit versus close serialization on disposable database
+        run: |
+          set -eu
+          psql -X -v ON_ERROR_STOP=1 -f architecture/step4b-concurrency-fixture.sql
+          python3 architecture/step4b-concurrency-test.py
