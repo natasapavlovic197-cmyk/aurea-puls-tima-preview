@@ -2,11 +2,21 @@
 -- Successful calls consume a shared per-user minute bucket. Failed transactions roll back.
 -- Upstream ingress protection and retention remain separate requirements.
 BEGIN;
+SET LOCAL lock_timeout='5s';
+SET LOCAL statement_timeout='30s';
+DO $owner$
+BEGIN
+ IF current_user <> 'postgres' OR (SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname='aurea_manager_rpc') IS DISTINCT FROM 'postgres' THEN
+ RAISE EXCEPTION 'Unexpected migration owner'; END IF;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE ((n.nspname='aurea_manager_rpc' AND p.proname IN ('aurea_my_companies','aurea_manager_actions','aurea_manager_cycles','aurea_manager_summary','aurea_manager_save_action')) OR (n.nspname='aurea_private' AND p.proname='manager_publications_v2')) AND pg_get_userbyid(p.proowner)='postgres' AND p.prosecdef) <> 6 THEN
+ RAISE EXCEPTION 'Unexpected manager ownership'; END IF;
+END $owner$;
 CREATE TABLE aurea_manager_rpc.request_limits (
  user_id uuid NOT NULL,
  window_start timestamptz NOT NULL,
  hits integer NOT NULL CHECK(hits BETWEEN 1 AND 120),
- PRIMARY KEY(user_id,window_start)
+ PRIMARY KEY(user_id)
 );
 ALTER TABLE aurea_manager_rpc.request_limits ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON aurea_manager_rpc.request_limits FROM PUBLIC,anon,authenticated,service_role;
@@ -20,10 +30,13 @@ BEGIN
  AND a.deleted_at IS NULL AND (a.banned_until IS NULL OR a.banned_until<=clock_timestamp())
  AND (s.not_after IS NULL OR s.not_after>clock_timestamp())
  ) THEN RAISE EXCEPTION 'Access denied' USING ERRCODE='42501'; END IF;
+ -- One row per user; no minute-by-minute accumulation.
+ IF NOT EXISTS (SELECT 1 FROM aurea_private.memberships m WHERE m.user_id=u AND m.role IN ('owner','manager')) THEN
+ RAISE EXCEPTION 'Access denied' USING ERRCODE='42501'; END IF;
  w:=to_timestamp(floor(extract(epoch FROM clock_timestamp())/60)*60);
  INSERT INTO aurea_manager_rpc.request_limits AS l(user_id,window_start,hits)
- VALUES(u,w,1) ON CONFLICT(user_id,window_start) DO UPDATE SET hits=l.hits+1 WHERE l.hits<120 RETURNING hits INTO h;
- IF h IS NULL THEN RAISE EXCEPTION 'Request limit reached' USING ERRCODE='P0001'; END IF;
+ VALUES(u,w,1) ON CONFLICT(user_id) DO UPDATE SET window_start=GREATEST(l.window_start,EXCLUDED.window_start), hits=CASE WHEN EXCLUDED.window_start>l.window_start THEN 1 ELSE l.hits+1 END WHERE EXCLUDED.window_start>l.window_start OR l.hits<120 RETURNING hits INTO h;
+ IF h IS NULL THEN RAISE EXCEPTION 'Request limit reached' USING ERRCODE='PT429'; END IF;
 END $guard$;
 REVOKE ALL ON FUNCTION aurea_manager_rpc.check_session_and_limit() FROM PUBLIC,anon,authenticated,service_role;
 
@@ -213,5 +226,7 @@ ALTER FUNCTION public.aurea_manager_actions(uuid) VOLATILE;
 ALTER FUNCTION public.aurea_manager_cycles(uuid) VOLATILE;
 ALTER FUNCTION public.aurea_manager_summary(uuid) VOLATILE;
 ALTER FUNCTION public.aurea_manager_publications_v2(uuid) VOLATILE;
--- Before approval, verify ownership, exact grants, POST-only clients, cleanup and HTTP semantics.
+NOTIFY pgrst,'reload schema';
+-- One row per authorized manager; remove stale rows on identity offboarding.
+-- Failed requests still require independent ingress protection. No logging changes.
 COMMIT;
