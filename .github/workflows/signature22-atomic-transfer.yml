@@ -78,7 +78,19 @@ jobs:
           node architecture/build-staging-manager.cjs
           node --test architecture/signature22-education.test.cjs
           npx playwright install --with-deps chromium
-          node architecture/signature22-education-browser-qa.cjs
+          # The locked 2.2 master intentionally hides the legacy exercise-back button.
+          # Test actual visible Signature navigation, keeping the approved source bytes intact.
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('architecture/signature22-education-browser-qa.cjs')
+          s=p.read_text()
+          old="await frame.locator('#exercise-back').click();"
+          assert s.count(old)==1
+          new="assert.equal(await frame.locator('#exercise-back').isVisible(),false);const back=frame.locator('#aureaPolishBack');assert.equal(await back.isVisible(),true);await back.click();"
+          Path('architecture/signature22-education-visible-qa.cjs').write_text(s.replace(old,new))
+          PY
+          node architecture/signature22-education-visible-qa.cjs
+          rm architecture/signature22-education-visible-qa.cjs
           node architecture/employee-staging-browser-qa.cjs
           node architecture/premium-manager-browser-qa.cjs
           node architecture/joint-premium-security-qa.cjs
