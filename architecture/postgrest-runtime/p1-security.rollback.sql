@@ -1,0 +1,14 @@
+BEGIN;
+DROP FUNCTION public.aurea_manager_actions(p_organization_id uuid);
+ALTER FUNCTION aurea_manager_rpc.aurea_manager_actions(p_organization_id uuid) SET SCHEMA public;
+DROP FUNCTION public.aurea_manager_cycles(p_organization_id uuid);
+ALTER FUNCTION aurea_manager_rpc.aurea_manager_cycles(p_organization_id uuid) SET SCHEMA public;
+DROP FUNCTION public.aurea_manager_save_action(p_organization_id uuid, p_description text, p_due_on date, p_cycle_id uuid, p_action_id uuid, p_status text);
+ALTER FUNCTION aurea_manager_rpc.aurea_manager_save_action(p_organization_id uuid, p_description text, p_due_on date, p_cycle_id uuid, p_action_id uuid, p_status text) SET SCHEMA public;
+DROP FUNCTION public.aurea_manager_summary(p_organization_id uuid);
+ALTER FUNCTION aurea_manager_rpc.aurea_manager_summary(p_organization_id uuid) SET SCHEMA public;
+DROP FUNCTION public.aurea_my_companies();
+ALTER FUNCTION aurea_manager_rpc.aurea_my_companies() SET SCHEMA public;
+DROP SCHEMA aurea_manager_rpc;
+GRANT EXECUTE ON FUNCTION public.aurea_employee_invitation(text),public.aurea_employee_submit(text,jsonb) TO service_role,aurea_employee_login;
+COMMIT;
