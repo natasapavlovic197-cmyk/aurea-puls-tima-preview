@@ -1,4 +1,4 @@
-name: AUREA delivery provisioning preflight (read-only)
+name: AUREA delivery secret storage readiness
 on:
   workflow_dispatch:
 permissions:
@@ -13,25 +13,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     steps:
-      - name: API Keys permission probe (status only)
+      - name: Validate protected password input and target boundaries
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          (async()=>{
-            if(process.env.GITHUB_REPOSITORY!=='natasapavlovic197-cmyk/aurea-puls-tima-preview'||process.env.GITHUB_REF!=='refs/heads/integration/employee-ten-domains-step5'||!process.env.SUPABASE_ACCESS_TOKEN)throw Error('guard');
-            const response=await fetch('https://api.supabase.com/v1/projects/ublzmoroanhlcgpnxilw/api-keys?reveal=false',{method:'GET',headers:{authorization:'Bearer '+process.env.SUPABASE_ACCESS_TOKEN,accept:'application/json'},redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});
-            const status=response.status;
-            // Discard the response stream; never parse, persist or print key material.
-            if(response.body)await response.body.cancel();
-            console.log('HTTP '+status);
-            if(status!==200)process.exitCode=1;
-          })().catch(()=>{console.error('HTTP status unavailable');process.exitCode=1});
-          NODE
-      - name: Verify staging boundaries and absence of conflicts
-        env:
+          AUREA_DELIVERY_AUTH_PASSWORD: ${{ secrets.AUREA_DELIVERY_AUTH_PASSWORD }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -42,37 +26,40 @@ jobs:
           const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
           const REF='ublzmoroanhlcgpnxilw';
           const BRANCH='integration/employee-ten-domains-step5';
+          const TARGET='3070286d-a61b-43f2-8d2b-d3c0461bf54c';
           const names=['AUREA_DELIVERY_AUTH_USER_ID','AUREA_DELIVERY_AUTH_EMAIL','AUREA_DELIVERY_AUTH_PASSWORD','AUREA_INVITATION_HMAC_SECRET','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY','AUREA_DELIVERY_ENABLED','AUREA_DELIVERY_DEPLOY_APPROVED','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED'];
           let phase='guard';
-          const check=(ok,label)=>{if(!ok)throw Error(label);console.log('PASS '+label)};
+          const check=(ok,label)=>{if(!ok)throw Error('blocked');console.log('PASS '+label)};
           async function request(base,path,token,body){
             const r=await fetch(base+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+token,accept:'application/json',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(20000)});
-            if(!r.ok||r.headers.get('link')?.includes('rel="next"'))throw Error('API unavailable or paginated');
+            if(!r.ok||r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('blocked')}
             return r.json();
           }
           (async()=>{
             check(process.env.GITHUB_REPOSITORY==='natasapavlovic197-cmyk/aurea-puls-tima-preview'&&process.env.GITHUB_REF==='refs/heads/'+BRANCH&&process.env.NETLIFY_SITE_ID===SITE&&!!process.env.NETLIFY_AUTH_TOKEN&&!!process.env.SUPABASE_ACCESS_TOKEN,'execution guard');
-            const n=(p)=>request('https://api.netlify.com/api/v1',p,process.env.NETLIFY_AUTH_TOKEN);
+            phase='password input';
+            const password=process.env.AUREA_DELIVERY_AUTH_PASSWORD;
+            check(typeof password==='string'&&password.length>=20&&password.length<=1024,'protected password input present');
+            delete process.env.AUREA_DELIVERY_AUTH_PASSWORD;
+            const n=p=>request('https://api.netlify.com/api/v1',p,process.env.NETLIFY_AUTH_TOKEN);
             const s=(p,b)=>request('https://api.supabase.com/v1/projects/'+REF,p,process.env.SUPABASE_ACCESS_TOKEN,b);
             phase='site guard';
             const site=await n('/sites/'+SITE);
             check(site.id===SITE&&site.name==='aurea-puls-tima-preview'&&(site.build_settings?.stop_builds??site.stop_builds)===true&&site.build_settings?.repo_branch==='main'&&typeof site.account_id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(site.account_id),'expected site and stopped builds');
-            phase='environment inventory';
+            phase='environment conflict guard';
             const base='/accounts/'+encodeURIComponent(site.account_id)+'/env';
             for(const p of [base,base+'?site_id='+SITE]){
               const rows=await n(p);
-              check(Array.isArray(rows)&&rows.every(x=>typeof x.key==='string'),'complete inventory shape');
-              const conflicts=rows.filter(x=>names.includes(x.key)).map(x=>x.key);
-              // Only known key names, never values or raw response.
-              if(conflicts.length){console.log('BLOCKED conflicting names: '+[...new Set(conflicts)].sort().join(', '));throw Error('conflict')}
+              if(!Array.isArray(rows)||!rows.every(x=>typeof x.key==='string'))throw Error('blocked');
+              if(rows.some(x=>names.includes(x.key)))throw Error('conflict');
             }
-            check(true,'no site or account configuration conflict');
-            phase='Supabase project';
+            check(true,'no site or account key conflicts');
+            phase='project guard';
             const project=await s('');
             check(project.id===REF&&project.name==='aurea-puls-staging','expected staging project');
-            phase='read-only database checks';
-            const rows=await s('/database/query',{query:"BEGIN READ ONLY; SELECT (SELECT count(*) FROM aurea_delivery_rpc.identities)::int AS identities,(SELECT count(*) FROM aurea_delivery_rpc.scopes)::int AS scopes,(SELECT count(*) FROM aurea_delivery_rpc.identities i JOIN aurea_private.memberships m ON m.user_id=i.user_id)::int AS overlaps,(SELECT count(*) FROM auth.users WHERE lower(email)='aurea-delivery-staging@example.invalid')::int AS conflicts; ROLLBACK;"});
-            check(Array.isArray(rows)&&rows.length===1&&['identities','scopes','overlaps','conflicts'].every(k=>rows[0][k]===0),'no delivery or membership conflicts');
-            console.log('PREFLIGHT ONLY: Auth admin authorization not established; no provisioning, secret generation, email or deploy.');
+            phase='identity isolation';
+            const rows=await s('/database/query',{query:"BEGIN READ ONLY; SELECT (SELECT count(*) FROM aurea_delivery_rpc.identities)::int AS identities,(SELECT count(*) FROM aurea_delivery_rpc.identities i JOIN auth.users u ON u.id=i.user_id WHERE i.user_id='"+TARGET+"' AND u.email='aurea-delivery-staging@example.invalid' AND u.email_confirmed_at IS NOT NULL AND u.deleted_at IS NULL AND (u.banned_until IS NULL OR u.banned_until<=now()) AND u.is_anonymous IS FALSE)::int AS target,(SELECT count(*) FROM aurea_delivery_rpc.scopes)::int AS scopes,(SELECT count(*) FROM aurea_private.memberships WHERE user_id='"+TARGET+"')::int AS memberships,(SELECT count(*) FROM auth.sessions WHERE user_id='"+TARGET+"')::int AS sessions; ROLLBACK;"});
+            check(Array.isArray(rows)&&rows.length===1&&rows[0].identities===1&&rows[0].target===1&&['scopes','memberships','sessions'].every(k=>rows[0][k]===0),'dedicated confirmed identity and zero access scope');
+            console.log('READ ONLY: no login, key creation, secret transfer or deploy');
           })().catch(()=>{console.error('BLOCKED '+phase+'; raw diagnostics suppressed');process.exitCode=1});
           NODE
