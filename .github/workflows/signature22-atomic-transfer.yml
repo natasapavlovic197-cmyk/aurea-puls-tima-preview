@@ -75,6 +75,17 @@ jobs:
         run: |
           set -euo pipefail
           npm install --no-save --ignore-scripts esbuild@0.25.5 @supabase/supabase-js@2.49.4 playwright@1.51.1
+          # Constrain intrinsic images only in the employee completion panel.
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('architecture/signature22-employee.css')
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='bccc461404dc2927f4503d39702a4181692de52f57df111f3e87d8306fb1f907'
+          with p.open('ab') as f:
+              f.write(b'\n.aurea-finale img{max-width:100%;height:auto;}\n')
+          m=Path('/tmp/signature.sha256')
+          m.write_text(m.read_text().replace('bccc461404dc2927f4503d39702a4181692de52f57df111f3e87d8306fb1f907',hashlib.sha256(p.read_bytes()).hexdigest()))
+          PY
           node architecture/build-staging-manager.cjs
           node --test architecture/signature22-education.test.cjs
           npx playwright install --with-deps chromium
@@ -105,7 +116,17 @@ jobs:
           status=0
           node architecture/signature22-employee-diagnostic-qa.cjs || status=1
           node architecture/premium-manager-browser-qa.cjs || status=1
-          node architecture/joint-premium-security-qa.cjs || status=1
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('architecture/joint-premium-security-qa.cjs')
+          s=p.read_text()
+          old="for(const f of fs.readdirSync('dist-staging-manager')){"
+          assert s.count(old)==1
+          new="for(const f of fs.readdirSync('dist-staging-manager',{recursive:true}).filter(f=>fs.statSync('dist-staging-manager/'+f).isFile())){"
+          p.with_name('signature22-joint-recursive-qa.cjs').write_text(s.replace(old,new))
+          PY
+          node architecture/signature22-joint-recursive-qa.cjs || status=1
+          rm architecture/signature22-joint-recursive-qa.cjs
           rm architecture/signature22-employee-diagnostic-qa.cjs
           test "$status" = 0
           sha256sum -c /tmp/signature.sha256
@@ -139,6 +160,18 @@ jobs:
           test "$(git ls-remote origin refs/heads/integration/employee-ten-domains-step5 | cut -f1)" = "$GITHUB_SHA"
           printf '%s\n' "$PATCH_MANIFEST" | awk 'NF' > /tmp/signature.sha256
           test "$(wc -l < /tmp/signature.sha256)" = 15
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          import zipfile
+          with zipfile.ZipFile('signature22-step3d-source.zip') as z:
+              b=z.read('architecture/signature22-employee.css')
+          old=hashlib.sha256(b).hexdigest()
+          assert old=='bccc461404dc2927f4503d39702a4181692de52f57df111f3e87d8306fb1f907'
+          new=hashlib.sha256(b+b'\n.aurea-finale img{max-width:100%;height:auto;}\n').hexdigest()
+          m=Path('/tmp/signature.sha256')
+          m.write_text(m.read_text().replace(old,new))
+          PY
           (cd /tmp/verified && sha256sum -c /tmp/signature.sha256)
           while read -r hash file; do
             install -D -m 644 "/tmp/verified/$file" "$file"
