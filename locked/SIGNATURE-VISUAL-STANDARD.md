@@ -21,3 +21,9 @@ Owner direction, 2026-11-24. Applies to employee, manager, personal analytics an
 
 ## Status
 Royal Burgundy and selective existing Kringle italic approved as design direction. Supporting token choices are proposed implementation defaults. This file records rules only; it does not claim CSS implementation, browser verification or owner acceptance of final screens.
+
+## Emotional comfort and calm interaction
+- Both roles must feel visually comfortable and calm, not merely luxurious. Employee experience: privacy, autonomy, nonjudgmental wording and low perceived pressure. Manager experience: clarity, orientation and non-alarmist interpretation without minimizing genuine adverse signals.
+- Prefer warm ivory surfaces, restrained Royal Burgundy focal accents, consistent visual rhythm, generous separation and readable contrast. Avoid visual crowding, competing focal points, excessive saturated surfaces and gratuitous movement.
+- Preserve predictable navigation, voluntary reflection, clear exits and backtracking. Do not use urgency, gamification, coercion or decorative cues to influence survey answers. Present all response options with equivalent visual weight. Do not imply privacy or anonymity beyond verified technical guarantees.
+- Assess perceived calm and ease in actual user testing; visual design alone cannot establish psychological safety or prove reduced stress. Review mobile and desktop screens for both roles, including adverse results and error states.
