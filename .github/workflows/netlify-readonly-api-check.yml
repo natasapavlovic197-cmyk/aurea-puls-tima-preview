@@ -1,6 +1,15 @@
-name: AUREA delivery secret storage readiness
+name: AUREA delivery secret provisioning (staging only)
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Inspect only or explicitly provision staging secrets'
+        required: true
+        type: choice
+        default: inspect
+        options:
+          - inspect
+          - provision
 permissions:
   contents: read
 concurrency:
@@ -11,10 +20,11 @@ jobs:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
     environment: aurea-staging-admin
     runs-on: ubuntu-24.04
-    timeout-minutes: 4
+    timeout-minutes: 10
     steps:
-      - name: Validate protected password input and target boundaries
+      - name: Guarded staging secret provisioning
         env:
+          PROVISION_MODE: ${{ inputs.mode }}
           AUREA_DELIVERY_AUTH_PASSWORD: ${{ secrets.AUREA_DELIVERY_AUTH_PASSWORD }}
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
@@ -23,6 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           node <<'NODE'
+          const {randomBytes}=require('node:crypto');
           const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
           const REF='ublzmoroanhlcgpnxilw';
           const BRANCH='integration/employee-ten-domains-step5';
@@ -41,6 +52,7 @@ jobs:
             const password=process.env.AUREA_DELIVERY_AUTH_PASSWORD;
             check(typeof password==='string'&&password.length>=20&&password.length<=1024,'protected password input present');
             delete process.env.AUREA_DELIVERY_AUTH_PASSWORD;
+            check(['inspect','provision'].includes(process.env.PROVISION_MODE),'explicit mode');
             const n=p=>request('https://api.netlify.com/api/v1',p,process.env.NETLIFY_AUTH_TOKEN);
             const s=(p,b)=>request('https://api.supabase.com/v1/projects/'+REF,p,process.env.SUPABASE_ACCESS_TOKEN,b);
             phase='site guard';
@@ -60,6 +72,63 @@ jobs:
             phase='identity isolation';
             const rows=await s('/database/query',{query:"BEGIN READ ONLY; SELECT (SELECT count(*) FROM aurea_delivery_rpc.identities)::int AS identities,(SELECT count(*) FROM aurea_delivery_rpc.identities i JOIN auth.users u ON u.id=i.user_id WHERE i.user_id='"+TARGET+"' AND u.email='aurea-delivery-staging@example.invalid' AND u.email_confirmed_at IS NOT NULL AND u.deleted_at IS NULL AND (u.banned_until IS NULL OR u.banned_until<=now()) AND u.is_anonymous IS FALSE)::int AS target,(SELECT count(*) FROM aurea_delivery_rpc.scopes)::int AS scopes,(SELECT count(*) FROM aurea_private.memberships WHERE user_id='"+TARGET+"')::int AS memberships,(SELECT count(*) FROM auth.sessions WHERE user_id='"+TARGET+"')::int AS sessions; ROLLBACK;"});
             check(Array.isArray(rows)&&rows.length===1&&rows[0].identities===1&&rows[0].target===1&&['scopes','memberships','sessions'].every(k=>rows[0][k]===0),'dedicated confirmed identity and zero access scope');
-            console.log('READ ONLY: no login, key creation, secret transfer or deploy');
+            if(process.env.PROVISION_MODE==='inspect'){console.log('READ ONLY: no secret generation or transfer');return;}
+            const values={
+              AUREA_DELIVERY_AUTH_USER_ID:TARGET,
+              AUREA_DELIVERY_AUTH_EMAIL:'aurea-delivery-staging@example.invalid',
+              AUREA_DELIVERY_AUTH_PASSWORD:password,
+              AUREA_INVITATION_HMAC_SECRET:randomBytes(32).toString('hex'),
+              AUREA_SUPABASE_URL:'https://ublzmoroanhlcgpnxilw.supabase.co',
+              AUREA_SUPABASE_PUBLISHABLE_KEY:'sb_publishable_Za18LIyl1qfx2Tlucyj3Xg_CSWRukS6'
+            };
+            console.log('::add-mask::'+values.AUREA_INVITATION_HMAC_SECRET);
+            const created=[];
+            let attempted=null;
+            const item=k=>base+'/'+encodeURIComponent(k)+'?site_id='+SITE;
+            async function net(method,p,body){
+              const r=await fetch('https://api.netlify.com/api/v1'+p,{method,headers:{authorization:'Bearer '+process.env.NETLIFY_AUTH_TOKEN,accept:'application/json',...(body?{'content-type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});
+              if(r.status===200||r.status===201)return {status:r.status,data:await r.json()};
+              await r.body?.cancel();return {status:r.status};
+            }
+            function ownedMetadata(row,k,id){
+              return row?.key===k&&row.is_secret===true&&Array.isArray(row.scopes)&&row.scopes.length===1&&row.scopes[0]==='functions'&&Array.isArray(row.values)&&row.values.length===1&&row.values[0].context==='branch'&&row.values[0].context_parameter===BRANCH&&typeof row.values[0].id==='string'&&row.values[0].id.length>0&&(!id||row.values[0].id===id);
+            }
+            try{
+              for(const k of Object.keys(values)){
+                phase='exact absent-key guard '+k;
+                if((await net('GET',item(k))).status!==404||(await n(base)).some(x=>x.key===k))throw Error('conflict');
+                phase='create '+k;
+                attempted=k;
+                const c=await net('POST',base+'?site_id='+SITE,[{key:k,scopes:['functions'],is_secret:true,values:[{context:'branch',context_parameter:BRANCH,value:values[k]}]}]);
+                const row=Array.isArray(c.data)&&c.data.length===1?c.data[0]:c.data;
+                // Only positive POST receipt with exact metadata establishes ownership.
+                if(c.status!==201||!ownedMetadata(row,k))throw Error('unconfirmed creation');
+                const id=row.values[0].id;
+                created.push({k,id});attempted=null;
+                phase='verify '+k;
+                const v=await net('GET',item(k));
+                if(v.status!==200||!ownedMetadata(v.data,k,id))throw Error('metadata mismatch');
+                console.log('PASS secret metadata '+k);
+              }
+              phase='final inventory';
+              const shared=await n(base),local=await n(base+'?site_id='+SITE);
+              if(shared.some(x=>names.includes(x.key))||local.some(x=>names.includes(x.key)&&!Object.hasOwn(values,x.key))||created.some(({k,id})=>local.filter(x=>x.key===k&&ownedMetadata(x,k,id)).length!==1))throw Error('final metadata mismatch');
+              console.log('PASS six staging-only Functions variables; activation flags absent; no deploy');
+            }catch{
+              console.error('BLOCKED '+phase+'; raw diagnostics suppressed');
+              if(attempted)console.error('RECONCILE ONLY '+attempted+'; creation outcome unknown; never blindly delete');
+              for(const {k,id} of created.reverse()){
+                try{
+                  const v=await net('GET',item(k));
+                  if(v.status===404){console.log('PASS rollback absent '+k);continue;}
+                  if(v.status!==200||!ownedMetadata(v.data,k,id))throw Error('ownership changed');
+                  if((await net('DELETE',item(k))).status!==204)throw Error('delete unconfirmed');
+                  if((await net('GET',item(k))).status!==404||(await n(base)).some(x=>x.key===k))throw Error('cleanup unconfirmed');
+                  console.log('PASS rollback '+k);
+                }catch{console.error('ROLLBACK UNCONFIRMED '+k+'; inspect exact key manually');}
+              }
+              process.exitCode=1;
+            }finally{for(const k of Object.keys(values))delete values[k];}
+
           })().catch(()=>{console.error('BLOCKED '+phase+'; raw diagnostics suppressed');process.exitCode=1});
           NODE
