@@ -1,6 +1,7 @@
 'use strict';
 const {createEmployeeClient}=require('./employee-live-client.cjs');
 const {snapshot,renderPersonalInsights}=require('./employee-personal-insights.cjs');
+const {mountHistory}=require('./employee-personal-history-ui.cjs');
 const {anchors,rotation}=require('./psychometric-item-bank.cjs');
 const domains={role_clarity:'Jasnoća uloge',communication:'Komunikacija',workload:'Radno opterećenje',psychological_safety:'Psihološka sigurnost',leadership_support:'Podrška rukovodioca',team_collaboration:'Timska saradnja',autonomy:'Autonomija',fairness_recognition:'Pravičnost i priznanje',engagement_meaning:'Angažovanost i smisao',recovery:'Oporavak'};
 const itemDomains=Object.fromEntries([...anchors,...rotation.flat()].map(q=>[q.code,q.domain]));
@@ -24,7 +25,7 @@ async function start(){
  let personal=null;try{personal=snapshot(questions,answers)}catch{}
  for(const k of Object.keys(answers))delete answers[k];
  root.innerHTML='<div class="panel fade aurea-finale" role="status"><div class="aurea-finale-kicker">AUREA / PULS TIMA</div><div class="aurea-finale-rule"></div><div class="aurea-finale-mark" aria-hidden="true"></div><h2>Hvala na izdvojenom vremenu.</h2><p class="aurea-finale-lead">Vaši odgovori su primljeni. Vaše iskustvo je važno za razumevanje načina na koji tim funkcioniše.</p><div class="aurea-finale-rule"></div><p class="aurea-finale-disclaimer">Rukovodilac nema pristup individualnim odgovorima kroz ovaj sistem.</p></div>'
- if(personal){const actions=document.createElement('div');actions.className='aurea-finale-actions';const b=document.createElement('button');b.type='button';b.className='btn';b.textContent='Pogledajte svoj lični puls';actions.append(b);root.querySelector('.aurea-finale').append(actions);b.onclick=()=>{try{const panel=document.createElement('div');panel.innerHTML=renderPersonalInsights(personal);root.append(panel);actions.remove();personal=null;panel.querySelector('#personal-dismiss').onclick=()=>{panel.remove()};panel.scrollIntoView({block:'start'})}catch{personal=null;actions.remove()}}}
+ if(personal){const actions=document.createElement('div');actions.className='aurea-finale-actions';const b=document.createElement('button');b.type='button';b.className='btn';b.textContent='Pogledajte svoj lični puls';actions.append(b);root.querySelector('.aurea-finale').append(actions);b.onclick=()=>{try{const panel=document.createElement('div');panel.innerHTML=renderPersonalInsights(personal);root.append(panel);actions.remove();const history=document.createElement('div');panel.append(history);const dispose=mountHistory(history,personal);personal=null;panel.querySelector('#personal-dismiss').onclick=()=>{dispose();panel.remove()};panel.scrollIntoView({block:'start'})}catch{personal=null;actions.remove()}}}
  };
  }
  render();
