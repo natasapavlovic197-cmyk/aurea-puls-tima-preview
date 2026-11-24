@@ -1,0 +1,11 @@
+# AUREA Signature P3.5 — owner-approved visual baseline
+2026-11-24. Owner confirmed both existing live employee and manager experiences in conversation, with additive functional changes and personal insights.
+## Immutable reference
+Production commit: 5f8700ee37b89280d1b0e037b7ba1bb8441ed478.
+- /zaposleni/ → locked/employee-approved.html, blob 3bd720365541110cacb9b9ce166cf99f783b618e, archive commit 5ed5a6b2558ca541870058ec2503b736cb9e6861.
+- /rukovodilac/ → locked/manager-v35-approved.html, blob 5ea2552c281e4befa06e9f5cb76bfc144754dc78 (current verified archive; older README cites historical SHA).
+- /kringle/ source blob 86303e79bd6705f23c24f8d3d2a8f4d8b0f23943 at production commit; preserve scenes, characters, approved aesthetics; Andjela animation requires explicit visual acceptance against Marko.
+## Integration rules
+Preserve approved typography, cards, motion, navigation, mobile layouts and complete guided experience. No redesign or simplified substitute. Separate employee and manager routes and privileges. Integrate six weekly items, ten domains, 15-item four-week bank, actual aggregate publications and comparable item/version trends; never invent scores or describe individual item percentages as validated domain indices. Human-readable labels instead of internal codes, accessible login labels and safe session handling. Employee personal radar and trends: approved design direction, not existing functionality; require privacy architecture and sufficient comparable measurements, no manager access to individual history. Avoid linking anonymous responses to identities without explicit privacy design and acceptance.
+## Preview and acceptance
+Use isolated candidate, no main writes, no unapproved deployment, no real emails, no TinyFish spending. Owner reviews mobile employee and manager separately, including Andjela in motion. Archive is a reference, not technical enforcement; compare against exact blobs and run visual regressions before release. Existing staging deployment 6b05ae6085a89d61d80cada8 verified static files; real manager login and aggregate trend observed with synthetic V2 data. Employee live submission, cross-tenant negative tests, confidentiality and delivery gates remain mandatory before pilot.
