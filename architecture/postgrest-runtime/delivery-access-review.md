@@ -1,0 +1,3 @@
+# Delivery HTTPS review
+
+No deployment or database change. Adapter preserves existing store/worker contract and permits only eight named RPC operations. Public wrappers are revoked from all runtime roles. Dedicated identity allowlist empty. Existing private functions with session_user guards need a separate narrow authorization refactor before PostgREST can execute them; no bypass is included. Claim is global in existing implementation and must be scoped to approved tenant(s) before activation. Scheduler, real email provider and grants remain disabled. Staging test must prove dedicated JWT, ordinary manager/anonymous denial, scoped lease, duplicate prevention, reminder filtering, digest threshold and cleanup. No management PAT in runtime.
