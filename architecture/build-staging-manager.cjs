@@ -2,11 +2,12 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const esbuild=require('esbuild');
+const {premiumManager}=require('./premium-manager-template.cjs');
 const {premiumEmployee}=require('./premium-employee-template.cjs');
 async function main(){
  const out=path.resolve('dist-staging-manager');
  fs.mkdirSync(out,{recursive:true});
- fs.copyFileSync(path.join(__dirname,'staging-manager/index.html'),path.join(out,'index.html'));
+ fs.writeFileSync(path.join(out,'index.html'),premiumManager(fs.readFileSync(path.join(__dirname,'../rukovodilac/index.html'),'utf8')));
  fs.copyFileSync(path.join(__dirname,'manager-login.css'),path.join(out,'manager-login.css'));
  await esbuild.build({entryPoints:[path.join(__dirname,'staging-manager-entry.cjs')],bundle:true,platform:'browser',format:'iife',outfile:path.join(out,'manager-login.bundle.js'),minify:true});
  fs.writeFileSync(path.join(out,'employee.html'),premiumEmployee(fs.readFileSync(path.join(__dirname,'employee-six-question-preview.html'),'utf8')));

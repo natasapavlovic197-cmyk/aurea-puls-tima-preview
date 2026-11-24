@@ -12,6 +12,7 @@ function buildPublishedManagerReport(rows){
   if(!item||item.domain!==r.domain)throw TypeError('Publication item mismatch');
   return {weekStart:r.weekStart,itemCode:r.itemCode,itemVersion:r.itemVersion,responseCount:r.responseCount,favorablePercent:r.favorablePercent};
  });
- return prepareManagerReview(normalized);
+ const report=prepareManagerReview(normalized);
+ return {...report,history:normalized};
 }
 module.exports={buildPublishedManagerReport};
