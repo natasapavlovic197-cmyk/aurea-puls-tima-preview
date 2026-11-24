@@ -32,4 +32,17 @@ jobs:
           AUREA_SUPABASE_PUBLISHABLE_KEY: ${{ vars.AUREA_SUPABASE_PUBLISHABLE_KEY }}
           AUREA_MANAGER_QA_PASSWORD: ${{ secrets.AUREA_MANAGER_QA_PASSWORD }}
           AUREA_DELIVERY_AUTH_PASSWORD: ${{ secrets.AUREA_DELIVERY_AUTH_PASSWORD }}
-        run: node acceptance-auth.cjs
+        run: |
+          node - <<'NODE'
+          const e=process.env;
+          const checks={
+            AUREA_SUPABASE_PUBLISHABLE_KEY: !e.AUREA_SUPABASE_PUBLISHABLE_KEY ? 'MISSING' : /^sb_publishable_[\w-]+$/.test(e.AUREA_SUPABASE_PUBLISHABLE_KEY) ? 'PASS' : 'FORMAT_INVALID',
+            AUREA_MANAGER_QA_PASSWORD: !e.AUREA_MANAGER_QA_PASSWORD ? 'MISSING' : e.AUREA_MANAGER_QA_PASSWORD.length>=16 ? 'PASS' : 'FORMAT_INVALID',
+            AUREA_DELIVERY_AUTH_PASSWORD: !e.AUREA_DELIVERY_AUTH_PASSWORD ? 'MISSING' : e.AUREA_DELIVERY_AUTH_PASSWORD.length>=16 ? 'PASS' : 'FORMAT_INVALID',
+            DISTINCT_CREDENTIALS: e.AUREA_MANAGER_QA_PASSWORD && e.AUREA_DELIVERY_AUTH_PASSWORD && e.AUREA_MANAGER_QA_PASSWORD!==e.AUREA_DELIVERY_AUTH_PASSWORD ? 'PASS' : 'FAIL',
+            TARGET: e.GITHUB_REPOSITORY==='natasapavlovic197-cmyk/aurea-puls-tima-preview' && e.GITHUB_REF==='refs/heads/integration/employee-ten-domains-step5' && e.AUREA_ACCEPTANCE_MODE==='staging-auth-only' ? 'PASS' : 'FAIL'
+          };
+          for(const [k,v] of Object.entries(checks)) console.log(k+': '+v);
+          if(Object.values(checks).some(v=>v!=='PASS')) process.exitCode=1;
+          NODE
+          node acceptance-auth.cjs
