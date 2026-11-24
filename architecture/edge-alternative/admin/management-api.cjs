@@ -20,11 +20,8 @@ function createManagementAdapter({token,fetchImpl=globalThis.fetch,Pool,attestat
   const p=await request('');
   assert((p.ref||p.id)===REF&&p.region==='eu-west-1'&&p.status==='ACTIVE_HEALTHY','Wrong project');
   const pool=await request('/config/database/pooler');
-  // Accept only a unique explicit session-mode endpoint. Never derive a host from region.
-  const rows=Array.isArray(pool)?pool:[pool];
-  const matches=rows.filter(x=>x&&x.pool_mode==='session'&&Number(x.db_port)===5432&&/^aws-\d+-eu-west-1\.pooler\.supabase\.com$/.test(x.db_host||''));
-  assert(matches.length===1,'Unverified session pooler response');
-  host=matches[0].db_host;
+  host=require('../../supabase-pooler-metadata.cjs').sessionEndpoint(pool).host;
+  assert(attestation.secretInventoryApproved===true,'Separate secret inventory approval required');
   const secretNames=await list();
   const roles=await query(ROLE_SQL);
   assert(Array.isArray(roles),'Invalid role metadata');

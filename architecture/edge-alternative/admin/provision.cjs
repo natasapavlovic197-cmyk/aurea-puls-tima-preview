@@ -13,8 +13,8 @@ function verifier(password,salt=randomBytes(16)){
 }
 function validateEvidence(e){
  assert(e?.ref===REF&&e.region==='eu-west-1'&&e.status==='ACTIVE_HEALTHY','Wrong project');
- assert(/^aws-\d+-eu-west-1\.pooler\.supabase\.com$/.test(e.host||'')&&e.port===5432,'Unverified pooler');
- assert(e.secretsRead===true&&e.secretsWriteAttested===true&&e.exclusiveWindow===true&&e.sqlLoggingReviewed===true,'Authorization or safety gate missing');
+ assert(e.host==='aws-1-eu-west-1.pooler.supabase.com'&&e.port===5432,'Unverified pooler');
+ assert(e.secretsRead===true&&e.secretsWriteAttested===true&&e.exclusiveWindow===true&&e.sqlLoggingReviewed===true&&e.ownershipRollbackVerified===true&&e.flagsDisabled===true,'Authorization or safety gate missing');
  assert(Array.isArray(e.secretNames)&&NAMES.every(n=>!e.secretNames.includes(n)),'Secret conflict');
  assert(Array.isArray(e.roles)&&e.roles.length===2&&ROLES.every(n=>e.roles.some(r=>r.name===n&&r.passwordUnset===true&&r.restricted===true)),'Role conflict');
 }
@@ -23,6 +23,7 @@ async function provision({adapter,approval,mask}={}){
  // Adapter is intentionally injected; live API transport must be reviewed separately.
  const e=await adapter.inspect();validateEvidence(e);
  const values=NAMES.map(()=>randomBytes(32).toString('hex'));
+ assert(new Set(values).size===3,'Credential collision');
  const v=values.slice(0,2).map(p=>verifier(p));
  for(const x of [...values,...v])mask(x);
  let passwordsAttempted=false,secretsAttempted=false;

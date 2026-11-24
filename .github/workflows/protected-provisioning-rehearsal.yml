@@ -1,0 +1,21 @@
+name: AUREA protected provisioning rehearsal (NO WRITES)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aurea-staging-provisioning-rehearsal
+  cancel-in-progress: false
+jobs:
+  rehearsal:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    environment: aurea-staging-admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Synthetic rehearsal only
+        run: node --test architecture/edge-alternative/admin/protected-rehearsal.test.cjs architecture/edge-alternative/admin/offline.test.cjs architecture/edge-alternative/admin/management-api.test.cjs
+      - run: echo 'NO WRITES. No environment secrets mapped. No real database, API or deployment.'

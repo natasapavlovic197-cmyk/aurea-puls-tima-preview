@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const {provision,verifier,REF,ROLES,NAMES}=require('./provision.cjs');
 const {probe}=require('./connection-probe.cjs');
-const evidence={ref:REF,region:'eu-west-1',status:'ACTIVE_HEALTHY',host:'aws-9-eu-west-1.pooler.supabase.com',port:5432,secretsRead:true,secretsWriteAttested:true,exclusiveWindow:true,sqlLoggingReviewed:true,secretNames:[],roles:ROLES.map(name=>({name,passwordUnset:true,restricted:true}))};
+const evidence={ref:REF,region:'eu-west-1',status:'ACTIVE_HEALTHY',host:'aws-1-eu-west-1.pooler.supabase.com',port:5432,secretsRead:true,secretsWriteAttested:true,exclusiveWindow:true,sqlLoggingReviewed:true,ownershipRollbackVerified:true,flagsDisabled:true,secretNames:[],roles:ROLES.map(name=>({name,passwordUnset:true,restricted:true}))};
 (async()=>{
  assert.match(verifier('synthetic'),/^SCRAM-SHA-256\$4096:/);
  let writes=0,undo=0,masked=[];
