@@ -27,6 +27,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: node architecture/employee-staging-browser-qa.cjs
       - run: node architecture/premium-manager-browser-qa.cjs
+      - run: node architecture/joint-premium-security-qa.cjs
+      - run: node --test architecture/manager-company-selector.test.cjs architecture/restricted-pg-query.test.cjs architecture/employee-runtime.test.cjs architecture/employee-server-gateway.test.cjs architecture/restricted-employee-adapter.test.cjs
       - run: node --test architecture/published-manager-report.test.cjs architecture/manager-authorized-service.test.cjs architecture/manager-workspace-endpoint.test.cjs architecture/supabase-manager-bridge.test.cjs
       - uses: actions/upload-artifact@v4
         with:

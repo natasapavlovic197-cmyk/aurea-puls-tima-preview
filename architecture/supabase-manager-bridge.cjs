@@ -43,7 +43,7 @@ function createManagerBridge({url,key,fetchImpl=globalThis.fetch}={}){
  async function readActions({token,organizationId}){
   const rows=await actionRpc('aurea_manager_actions',token,organizationId);
   if(!Array.isArray(rows)||rows.length>100||rows.some(a=>!a||!UUID.test(a.id)||typeof a.description!=='string'||!['open','done','in_progress','cancelled'].includes(a.status)))throw new Error('Invalid activities');
-  return rows;
+  return rows.map(({id,description,due_on,status})=>({id,description,due_on:due_on??null,status}));
  }
  async function saveAction({token,organizationId,description,dueOn=null,cycleId=null,actionId=null,status='open'}){
   if(typeof description!=='string'||description.trim().length<3||description.trim().length>2000||!['open','done'].includes(status)||(actionId!==null&&!UUID.test(actionId))||(cycleId!==null&&!UUID.test(cycleId))||(dueOn!==null&&(typeof dueOn!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(dueOn))))throw new TypeError('Invalid activity');
