@@ -1,4 +1,4 @@
--- REVIEW ONLY: no migration applied. Legacy functions unchanged; isolated copies reuse their logic with scoped authorization.
+-- REVIEW ONLY. Legacy functions unchanged. Dedicated identity and explicit company scope.
 BEGIN;
 CREATE SCHEMA aurea_delivery_rpc;
 REVOKE ALL ON SCHEMA aurea_delivery_rpc FROM PUBLIC,anon,authenticated,service_role;
@@ -16,11 +16,11 @@ BEGIN
  END IF;
 END $$;
 REVOKE ALL ON FUNCTION aurea_delivery_rpc.authorize() FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION aurea_delivery_rpc.allowed_org(p_org uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $ SELECT EXISTS(SELECT 1 FROM aurea_delivery_rpc.scopes s WHERE s.user_id=auth.uid() AND s.organization_id=p_org) $;
+CREATE FUNCTION aurea_delivery_rpc.allowed_org(p_org uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$ SELECT EXISTS(SELECT 1 FROM aurea_delivery_rpc.scopes s WHERE s.user_id=auth.uid() AND s.organization_id=p_org) $$;
 REVOKE ALL ON FUNCTION aurea_delivery_rpc.allowed_org(uuid) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION aurea_delivery_rpc.require_org(p_org uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $ BEGIN PERFORM aurea_delivery_rpc.authorize(); IF NOT aurea_delivery_rpc.allowed_org(p_org) THEN RAISE EXCEPTION 'Delivery scope denied' USING ERRCODE='42501'; END IF; END $;
+CREATE FUNCTION aurea_delivery_rpc.require_org(p_org uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$ BEGIN PERFORM aurea_delivery_rpc.authorize(); IF NOT aurea_delivery_rpc.allowed_org(p_org) THEN RAISE EXCEPTION 'Delivery scope denied' USING ERRCODE='42501'; END IF; END $$;
 REVOKE ALL ON FUNCTION aurea_delivery_rpc.require_org(uuid) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION aurea_delivery_rpc.require_job(p_job bigint,p_lease uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $ BEGIN PERFORM aurea_delivery_rpc.authorize(); IF NOT EXISTS(SELECT 1 FROM aurea_private.weekly_delivery_jobs j WHERE j.id=p_job AND j.lease_token=p_lease AND j.status='processing' AND j.lease_expires_at>clock_timestamp() AND aurea_delivery_rpc.allowed_org(j.organization_id)) THEN RAISE EXCEPTION 'Delivery scope denied' USING ERRCODE='42501'; END IF; END $;
+CREATE FUNCTION aurea_delivery_rpc.require_job(p_job bigint,p_lease uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$ BEGIN PERFORM aurea_delivery_rpc.authorize(); IF NOT EXISTS(SELECT 1 FROM aurea_private.weekly_delivery_jobs j WHERE j.id=p_job AND j.lease_token=p_lease AND j.status='processing' AND j.lease_expires_at>clock_timestamp() AND aurea_delivery_rpc.allowed_org(j.organization_id)) THEN RAISE EXCEPTION 'Delivery scope denied' USING ERRCODE='42501'; END IF; END $$;
 REVOKE ALL ON FUNCTION aurea_delivery_rpc.require_job(bigint,uuid) FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION aurea_delivery_rpc.impl_claim_weekly_delivery_job(p_lease_token uuid, p_now timestamp with time zone DEFAULT now())
  RETURNS TABLE(id bigint, organization_id uuid, week_start date, action text, lease_token uuid)
@@ -135,162 +135,7 @@ AS $function$
 declare c uuid; existing aurea_private.invitations%rowtype; inserted uuid; addr text:=lower(btrim(p_address));
 begin
  perform aurea_delivery_rpc.require_org(p_org);
- if p_org is null or p_week is null or extract(isodow from p_week)<>1 or p_id is null or addr is null or length(addr)>254 or addr !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+p_lease_token uuid) RETURNS TABLE(id bigint, organization_id uuid, week_start date, action text, lease_token uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select * from aurea_delivery_rpc.impl_claim_weekly_delivery_job(p_lease_token);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.claim(uuid) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_claim(p_lease_token uuid) RETURNS TABLE(id bigint, organization_id uuid, week_start date, action text, lease_token uuid) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.claim(p_lease_token) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_claim(uuid) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.finish(p_id bigint,p_lease_token uuid,p_success boolean) RETURNS TABLE(finished boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_finish_weekly_delivery_job(p_id,p_lease_token,p_success);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.finish(bigint,uuid,boolean) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_finish(p_id bigint,p_lease_token uuid,p_success boolean) RETURNS TABLE(finished boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.finish(p_id,p_lease_token,p_success) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_finish(bigint,uuid,boolean) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.snapshot(p_job bigint,p_lease uuid,p_org uuid,p_week date,p_action text) RETURNS TABLE(snapshot jsonb) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_delivery_snapshot(p_job,p_lease,p_org,p_week,p_action);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.snapshot(bigint,uuid,uuid,date,text) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_snapshot(p_job bigint,p_lease uuid,p_org uuid,p_week date,p_action text) RETURNS TABLE(snapshot jsonb) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.snapshot(p_job,p_lease,p_org,p_week,p_action) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_snapshot(bigint,uuid,uuid,date,text) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.publications(p_job bigint,p_lease uuid,p_org uuid,p_week date) RETURNS TABLE(week_start text,item_code text,item_version integer,domain text,response_count integer,favorable_percent double precision,closed boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select * from aurea_delivery_rpc.impl_delivery_publications(p_job,p_lease,p_org,p_week);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.publications(bigint,uuid,uuid,date) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_publications(p_job bigint,p_lease uuid,p_org uuid,p_week date) RETURNS TABLE(week_start text,item_code text,item_version integer,domain text,response_count integer,favorable_percent double precision,closed boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.publications(p_job,p_lease,p_org,p_week) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_publications(bigint,uuid,uuid,date) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.reserve(p_job bigint,p_lease uuid,p_recipient uuid,p_key text) RETURNS TABLE(state text) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_reserve_recipient_delivery(p_job,p_lease,p_recipient,p_key);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.reserve(bigint,uuid,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_reserve(p_job bigint,p_lease uuid,p_recipient uuid,p_key text) RETURNS TABLE(state text) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.reserve(p_job,p_lease,p_recipient,p_key) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_reserve(bigint,uuid,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.receipt(p_job bigint,p_lease uuid,p_key text,p_provider text,p_confirm boolean) RETURNS TABLE(finished boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_finish_recipient_delivery(p_job,p_lease,p_key,p_provider,p_confirm);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.receipt(bigint,uuid,text,text,boolean) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_receipt(p_job bigint,p_lease uuid,p_key text,p_provider text,p_confirm boolean) RETURNS TABLE(finished boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.receipt(p_job,p_lease,p_key,p_provider,p_confirm) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_receipt(bigint,uuid,text,text,boolean) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.digest(p_job bigint,p_lease uuid,p_digest jsonb) RETURNS TABLE(finished boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_persist_weekly_digest(p_job,p_lease,p_digest);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.digest(bigint,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_digest(p_job bigint,p_lease uuid,p_digest jsonb) RETURNS TABLE(finished boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.digest(p_job,p_lease,p_digest) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_digest(bigint,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.issue(p_org uuid,p_week date,p_id uuid,p_address text,p_hash text,p_expires timestamptz) RETURNS TABLE(state text) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_issue_hmac_invitation(p_org,p_week,p_id,p_address,p_hash,p_expires);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.issue(uuid,date,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_issue(p_org uuid,p_week date,p_id uuid,p_address text,p_hash text,p_expires timestamptz) RETURNS TABLE(state text) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.issue(p_org,p_week,p_id,p_address,p_hash,p_expires) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_issue(uuid,date,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated,service_role;
-
-GRANT USAGE ON SCHEMA aurea_delivery_rpc TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_claim(uuid), aurea_delivery_rpc.claim(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_finish(bigint,uuid,boolean), aurea_delivery_rpc.finish(bigint,uuid,boolean) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_snapshot(bigint,uuid,uuid,date,text), aurea_delivery_rpc.snapshot(bigint,uuid,uuid,date,text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_publications(bigint,uuid,uuid,date), aurea_delivery_rpc.publications(bigint,uuid,uuid,date) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_reserve(bigint,uuid,uuid,text), aurea_delivery_rpc.reserve(bigint,uuid,uuid,text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_receipt(bigint,uuid,text,text,boolean), aurea_delivery_rpc.receipt(bigint,uuid,text,text,boolean) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_digest(bigint,uuid,jsonb), aurea_delivery_rpc.digest(bigint,uuid,jsonb) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.aurea_delivery_issue(uuid,date,uuid,text,text,timestamptz), aurea_delivery_rpc.issue(uuid,date,uuid,text,text,timestamptz) TO authenticated;
-COMMIT;
- or p_hash is null or p_hash !~ '^[a-f0-9]{64}p_lease_token uuid) RETURNS TABLE(id bigint, organization_id uuid, week_start date, action text, lease_token uuid) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select * from aurea_delivery_rpc.impl_claim_weekly_delivery_job(p_lease_token);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.claim(uuid) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_claim(p_lease_token uuid) RETURNS TABLE(id bigint, organization_id uuid, week_start date, action text, lease_token uuid) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.claim(p_lease_token) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_claim(uuid) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.finish(p_id bigint,p_lease_token uuid,p_success boolean) RETURNS TABLE(finished boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_finish_weekly_delivery_job(p_id,p_lease_token,p_success);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.finish(bigint,uuid,boolean) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_finish(p_id bigint,p_lease_token uuid,p_success boolean) RETURNS TABLE(finished boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.finish(p_id,p_lease_token,p_success) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_finish(bigint,uuid,boolean) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.snapshot(p_job bigint,p_lease uuid,p_org uuid,p_week date,p_action text) RETURNS TABLE(snapshot jsonb) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_delivery_snapshot(p_job,p_lease,p_org,p_week,p_action);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.snapshot(bigint,uuid,uuid,date,text) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_snapshot(p_job bigint,p_lease uuid,p_org uuid,p_week date,p_action text) RETURNS TABLE(snapshot jsonb) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.snapshot(p_job,p_lease,p_org,p_week,p_action) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_snapshot(bigint,uuid,uuid,date,text) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.publications(p_job bigint,p_lease uuid,p_org uuid,p_week date) RETURNS TABLE(week_start text,item_code text,item_version integer,domain text,response_count integer,favorable_percent double precision,closed boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select * from aurea_delivery_rpc.impl_delivery_publications(p_job,p_lease,p_org,p_week);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.publications(bigint,uuid,uuid,date) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_publications(p_job bigint,p_lease uuid,p_org uuid,p_week date) RETURNS TABLE(week_start text,item_code text,item_version integer,domain text,response_count integer,favorable_percent double precision,closed boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.publications(p_job,p_lease,p_org,p_week) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_publications(bigint,uuid,uuid,date) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.reserve(p_job bigint,p_lease uuid,p_recipient uuid,p_key text) RETURNS TABLE(state text) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_reserve_recipient_delivery(p_job,p_lease,p_recipient,p_key);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.reserve(bigint,uuid,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_reserve(p_job bigint,p_lease uuid,p_recipient uuid,p_key text) RETURNS TABLE(state text) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.reserve(p_job,p_lease,p_recipient,p_key) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_reserve(bigint,uuid,uuid,text) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.receipt(p_job bigint,p_lease uuid,p_key text,p_provider text,p_confirm boolean) RETURNS TABLE(finished boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_finish_recipient_delivery(p_job,p_lease,p_key,p_provider,p_confirm);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.receipt(bigint,uuid,text,text,boolean) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_receipt(p_job bigint,p_lease uuid,p_key text,p_provider text,p_confirm boolean) RETURNS TABLE(finished boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.receipt(p_job,p_lease,p_key,p_provider,p_confirm) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_receipt(bigint,uuid,text,text,boolean) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.digest(p_job bigint,p_lease uuid,p_digest jsonb) RETURNS TABLE(finished boolean) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_persist_weekly_digest(p_job,p_lease,p_digest);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.digest(bigint,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_digest(p_job bigint,p_lease uuid,p_digest jsonb) RETURNS TABLE(finished boolean) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.digest(p_job,p_lease,p_digest) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_digest(bigint,uuid,jsonb) FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE FUNCTION aurea_delivery_rpc.issue(p_org uuid,p_week date,p_id uuid,p_address text,p_hash text,p_expires timestamptz) RETURNS TABLE(state text) LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-BEGIN
- PERFORM aurea_delivery_rpc.authorize();
- RETURN QUERY select aurea_delivery_rpc.impl_issue_hmac_invitation(p_org,p_week,p_id,p_address,p_hash,p_expires);
-END $$;
-REVOKE ALL ON FUNCTION aurea_delivery_rpc.issue(uuid,date,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated,service_role;
-CREATE FUNCTION public.aurea_delivery_issue(p_org uuid,p_week date,p_id uuid,p_address text,p_hash text,p_expires timestamptz) RETURNS TABLE(state text) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.issue(p_org,p_week,p_id,p_address,p_hash,p_expires) $$;
-REVOKE ALL ON FUNCTION public.aurea_delivery_issue(uuid,date,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated,service_role;
-
-COMMIT;
- or p_expires is null or p_expires<=clock_timestamp() or p_expires>(p_week+7)::timestamp at time zone 'Europe/Belgrade' then return 'invalid'; end if;
+ if p_org is null or p_week is null or extract(isodow from p_week)<>1 or p_id is null or addr is null or length(addr)>254 or addr !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$' or p_hash is null or p_hash !~ '^[a-f0-9]{64}$' or p_expires is null or p_expires<=clock_timestamp() or p_expires>(p_week+7)::timestamp at time zone 'Europe/Belgrade' then return 'invalid'; end if;
  select id into c from aurea_private.cycles where organization_id=p_org and week_start=p_week and state in ('draft','open') and model_version=2 for update;
  if not found then return 'unavailable'; end if;
  select * into existing from aurea_private.invitations where cycle_id=c and lower(btrim(recipient_address))=addr;
@@ -424,4 +269,13 @@ REVOKE ALL ON FUNCTION aurea_delivery_rpc.issue(uuid,date,uuid,text,text,timesta
 CREATE FUNCTION public.aurea_delivery_issue(p_org uuid,p_week date,p_id uuid,p_address text,p_hash text,p_expires timestamptz) RETURNS TABLE(state text) LANGUAGE sql SECURITY INVOKER SET search_path='' AS $$ SELECT * FROM aurea_delivery_rpc.issue(p_org,p_week,p_id,p_address,p_hash,p_expires) $$;
 REVOKE ALL ON FUNCTION public.aurea_delivery_issue(uuid,date,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated,service_role;
 
+GRANT USAGE ON SCHEMA aurea_delivery_rpc TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_claim(uuid), aurea_delivery_rpc.claim(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_finish(bigint,uuid,boolean), aurea_delivery_rpc.finish(bigint,uuid,boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_snapshot(bigint,uuid,uuid,date,text), aurea_delivery_rpc.snapshot(bigint,uuid,uuid,date,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_publications(bigint,uuid,uuid,date), aurea_delivery_rpc.publications(bigint,uuid,uuid,date) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_reserve(bigint,uuid,uuid,text), aurea_delivery_rpc.reserve(bigint,uuid,uuid,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_receipt(bigint,uuid,text,text,boolean), aurea_delivery_rpc.receipt(bigint,uuid,text,text,boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_digest(bigint,uuid,jsonb), aurea_delivery_rpc.digest(bigint,uuid,jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.aurea_delivery_issue(uuid,date,uuid,text,text,timestamptz), aurea_delivery_rpc.issue(uuid,date,uuid,text,text,timestamptz) TO authenticated;
 COMMIT;
