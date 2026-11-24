@@ -97,3 +97,47 @@ jobs:
           jq 'with_entries(.value |= (if type == "string" and test("^[A-Za-z0-9 _.-]{1,80}$") then . else "unconfirmed" end))' "$tmp/plan.json"
           jq '{builds_stopped: (if (.build_settings.stop_builds | type) == "boolean" then .build_settings.stop_builds elif (.stop_builds | type) == "boolean" then .stop_builds else "unconfirmed" end)}' "$tmp/site.json"
           echo "READ ONLY: plan metadata does not establish write entitlement. No environment variables retrieved or changed."
+
+  supabase_inspect:
+    if: github.ref == 'refs/heads/integration/employee-ten-domains-step5' && github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview'
+    name: Supabase staging authorization and pooler (read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: aurea-staging-admin
+    steps:
+      - name: Inspect scoped Supabase API
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const ref='ublzmoroanhlcgpnxilw';
+          const token=process.env.SUPABASE_ACCESS_TOKEN;
+          if(!token?.startsWith('sbp_fc')) {console.error('Scoped token missing or unexpected format');process.exit(1)}
+          const root='https://api.supabase.com/v1/projects/'+ref;
+          async function get(path,label){
+            try{
+              const r=await fetch(root+path,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000),headers:{authorization:'Bearer '+token,accept:'application/json'}});
+              console.log(label+' HTTP '+r.status);
+              return {status:r.status,data:r.ok?await r.json():null};
+            }catch{return {status:0,data:null}}
+          }
+          (async()=>{
+            const p=await get('','Project Settings read');
+            if(p.status!==200||(p.data?.ref||p.data?.id)!==ref||p.data?.region!=='eu-west-1'||p.data?.status!=='ACTIVE_HEALTHY')throw Error('Project identity not confirmed');
+            const q=await get('/config/database/pooler','Connection Pooling read');
+            const rows=Array.isArray(q.data)?q.data:[q.data];
+            const hosts=new Set(rows.filter(x=>x&&x.pool_mode==='session'&&Number(x.db_port)===5432&&/^aws-\d+-eu-west-1\.pooler\.supabase\.com$/.test(x.db_host||'')).map(x=>x.db_host));
+            if(hosts.size===1)console.log('Verified session pooler: '+[...hosts][0]+':5432');
+            else console.log('Session pooler unconfirmed; response schema not accepted');
+            const ssl=await get('/ssl-enforcement','SSL Enforcement read');
+            const s=await get('/secrets','Edge Function Secrets read');
+            if(s.status===200&&Array.isArray(s.data)){
+              const names=['AUREA_STAGING_DATABASE_PASSWORD','AUREA_EMPLOYEE_DATABASE_PASSWORD','AUREA_LIMITER_SECRET'];
+              console.log('Target secret name conflicts: '+names.filter(n=>s.data.some(x=>x.name===n)).length);
+            }
+            console.log('Secrets write/delete: NOT VERIFIED by read-only requests');
+            if(q.status!==200||hosts.size!==1||ssl.status!==200||s.status!==200)process.exitCode=1;
+          })().catch(()=>{console.error('Read-only preflight stopped');process.exitCode=1});
+          NODE
