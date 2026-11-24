@@ -13,11 +13,12 @@ function createDeliverySession({auth,identityId,clock=Date.now}={}){
    if(!Number.isFinite(now))throw Error();
    if(session&&session.expiresAt>now+60000)return session.accessToken;
    const next=await (session?auth.refresh(session.refreshToken):auth.signIn());
+   // Retain a valid provider-issued bearer for cleanup before getUser or other validation.
+   if(jwt(next?.accessToken))revocationToken=next.accessToken;
    if(!next||!jwt(next.accessToken)||typeof next.refreshToken!=='string'||!next.refreshToken||next.refreshToken.length>16384||!Number.isFinite(next.expiresAt)||next.expiresAt<=clock()+60000||next.userId!==identityId)throw Error();
    // Trust provider identity verification, not decoded unsigned JWT claims.
    const user=await auth.getUser(next.accessToken);
    if(user?.id!==identityId)throw Error();
-   revocationToken=next.accessToken;
    if(closed)throw Error();
    session={accessToken:next.accessToken,refreshToken:next.refreshToken,expiresAt:next.expiresAt};
    return session.accessToken;
@@ -26,7 +27,9 @@ function createDeliverySession({auth,identityId,clock=Date.now}={}){
  async function readToken(){
   if(closed)throw Error('Delivery session closed');
   if(!pending)pending=acquire().finally(()=>{pending=null});
-  return pending;
+  const token=await pending;
+  if(closed)throw Error('Delivery authentication failed; session disabled');
+  return token;
  }
  function close(){
   closed=true;
