@@ -1,0 +1,144 @@
+name: Signature Step 3D atomic transfer QA
+on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths: ['.github/workflows/signature22-atomic-transfer.yml']
+permissions:
+  contents: read
+concurrency:
+  group: signature22-atomic-transfer
+  cancel-in-progress: false
+env:
+  EXPECTED_BASE: 7041915f3cc07b72b634b24dd8ea72204d257f69
+  PATCH_MANIFEST: |
+    1075db005fb840b424b48f2b96064eaebb1cb8f18b35506b5f69f70f68170910 architecture/premium-manager-template.cjs
+    42eac3b16dc320aaa83e149d7f92767d4922c1778e424b512a768350c7ae7d82 architecture/build-staging-manager.cjs
+    6a53ea2b18bab6821f0d1c506b014f1b3fafa1c8546a0ca25c2d67aab0202f78 architecture/signature-motion.js
+    bccc461404dc2927f4503d39702a4181692de52f57df111f3e87d8306fb1f907 architecture/signature22-employee.css
+    b6246c971001a2bd4c084cdeb8b7cb3e347f8514d4dc92cc28a133d2217271c6 architecture/signature22-education-browser-qa.cjs
+    fa7d2d32c0f83105a261229dfdd7f8f4877c9708fb7d181fd5c932f036739ad0 architecture/signature22-manager.css
+    ccbf60fc9560a6fcb6df61aeaedb5d95046db6b08056ba935ec1b15e4cca002c architecture/premium-employee-template.cjs
+    f0c8a3582742bc423fafab1be0c52da583d5c17e19d942bd01c927aa024a05d3 architecture/signature22-education.test.cjs
+    1825341db5ada2dd8c7be6a91e71f0fd22f5b13a043f9489316ff404e88a9b92 architecture/signature22-education-frame.cjs
+    3b9743f0e5c4fbe8a66ba6ffc69fdadb1231599de724a8af610eb7f4f7214acd architecture/signature22-guide.cjs
+    529382879c0348503a86d95792cb4bf98ac81cb4658f0a2dae9218bf840860e9 architecture/premium-manager-view.cjs
+    6e1868073b69adeb4bed2c7c613f0345caf1482f2bf6fbc5e5db8b79a4c6a1aa architecture/employee-staging-entry.cjs
+    f46dc55378e70f657d128ec74fb0831bc4d52a0cf38c93e8904dea57875d5705 architecture/signature22-education.cjs
+    3e4da83f144c8004f5f975bc19ec41ac5159f219cdfe2e7a0166fc8e5177b65f architecture/assets/natasa-guide.webp
+    4a11f4036309bf517b665e5e698fa142159e386fc2b3ce4b0bea46ca521ac08d architecture/assets/signature22-kringle.locked.html
+jobs:
+  qa:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Reconstruct exact candidate and verify all hashes
+        env:
+          DELTA: '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'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_BASE"
+          printf '%s\n' "$PATCH_MANIFEST" > /tmp/signature.sha256
+          python <<'PY'
+          import os,base64,gzip,json,hashlib,pathlib,re,subprocess
+          root=pathlib.Path('architecture')
+          packed=base64.b64decode(os.environ['DELTA'],validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='704ecbe9c8869e5ed65a6ceada445bbbf17a0b9095f0a9268382f8bba67202b3'
+          original={
+          'build-staging-manager.cjs':'79392caf5baacf649f141306a152274e2e5281f7',
+          'employee-staging-entry.cjs':'d2d64307af4b02ed98ff8aea7a75b35a1e74da0e',
+          'premium-employee-template.cjs':'3934e0213f445259e8ccda753286223b3b068bc0',
+          'premium-manager-template.cjs':'ebf6724b7530cc8482de2f921969b4e0e0929837',
+          'premium-manager-view.cjs':'d1f038fbc4ab106fa37505964f36778c79d1e8f0'}
+          for name,ops in json.loads(gzip.decompress(packed)).items():
+              p=root/name
+              assert p.parent==root
+              if name in original:
+                  assert subprocess.check_output(['git','hash-object',str(p)],text=True).strip()==original[name]
+                  s=p.read_text(encoding='utf-8')
+              else:
+                  assert not p.exists()
+                  s=''
+              for a,b,t in reversed(ops): s=s[:a]+t+s[b:]
+              p.write_bytes(s.encode('utf-8'))
+          source='https://cheerful-dodol-670625.netlify.app/'
+          def fetch(name,expected):
+              b=subprocess.check_output(['curl','--fail','--silent','--show-error','--max-time','90','--proto','=https',source+name])
+              assert hashlib.sha256(b).hexdigest()==expected, 'Master hash mismatch '+name
+              return b
+          for src,dst,h in [
+              ('kringle/index.html','assets/signature22-kringle.locked.html','4a11f4036309bf517b665e5e698fa142159e386fc2b3ce4b0bea46ca521ac08d'),
+              ('assets/natasa-guide.webp','assets/natasa-guide.webp','3e4da83f144c8004f5f975bc19ec41ac5159f219cdfe2e7a0166fc8e5177b65f'),
+              ('signature-motion.js','signature-motion.js','6a53ea2b18bab6821f0d1c506b014f1b3fafa1c8546a0ca25c2d67aab0202f78')]:
+              p=root/dst
+              p.parent.mkdir(parents=True,exist_ok=True)
+              p.write_bytes(fetch(src,h))
+          tail="@media(prefers-reduced-motion:reduce){.fade,.choice,.btn{animation:none!important;transition:none!important}html{scroll-behavior:auto!important}}"
+          for role,route,indices,h in [
+              ('manager','rukovodilac',[2,4,12,13,20,22],'e0ad23d21b6b23a837c51c4cce137cd9f8f846115f1e106c17913d6012c0091d'),
+              ('employee','zaposleni',[2,4,7,8,14,15,18],'1333acbddced9a40ee64af3662484f65fcad95dc29dc2a90c21ecc84339b096b')]:
+              blocks=re.findall(r'<style[^>]*>(.*?)</style>',fetch(route+'/index.html',h).decode('utf-8'),re.S)
+              (root/('signature22-'+role+'.css')).write_bytes(('\n'.join([blocks[i] for i in indices]+[tail])+'\n').encode('utf-8'))
+          PY
+          test "$(wc -l < /tmp/signature.sha256)" = 15
+          sha256sum -c /tmp/signature.sha256
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fresh build and isolated QA
+        run: |
+          set -euo pipefail
+          npm install --no-save --ignore-scripts esbuild@0.25.5 @supabase/supabase-js@2.49.4 playwright@1.51.1
+          node architecture/build-staging-manager.cjs
+          node --test architecture/signature22-education.test.cjs
+          npx playwright install --with-deps chromium
+          node architecture/signature22-education-browser-qa.cjs
+          node architecture/employee-staging-browser-qa.cjs
+          node architecture/premium-manager-browser-qa.cjs
+          node architecture/joint-premium-security-qa.cjs
+          sha256sum -c /tmp/signature.sha256
+          mkdir /tmp/verified
+          awk '{print $2}' /tmp/signature.sha256 | xargs -d '\n' -I '{}' cp --parents '{}' /tmp/verified
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signature22-verified-source
+          path: /tmp/verified/
+          if-no-files-found: error
+          retention-days: 3
+  promote:
+    needs: qa
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/download-artifact@v4
+        with:
+          name: signature22-verified-source
+          path: /tmp/verified
+      - name: Verify again and push one atomic integration commit
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_BASE"
+          test "$(git ls-remote origin refs/heads/integration/employee-ten-domains-step5 | cut -f1)" = "$GITHUB_SHA"
+          printf '%s\n' "$PATCH_MANIFEST" > /tmp/signature.sha256
+          test "$(wc -l < /tmp/signature.sha256)" = 15
+          (cd /tmp/verified && sha256sum -c /tmp/signature.sha256)
+          while read -r hash file; do
+            install -D -m 644 "/tmp/verified/$file" "$file"
+            git add -- "$file"
+          done < /tmp/signature.sha256
+          sha256sum -c /tmp/signature.sha256
+          test "$(git diff --cached --name-only | wc -l)" = 15
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Integrate exact verified Signature 2.2 Step 3D'
+          git push origin HEAD:refs/heads/integration/employee-ten-domains-step5
