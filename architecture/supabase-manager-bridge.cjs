@@ -9,14 +9,14 @@ function createManagerBridge({url,key,fetchImpl=globalThis.fetch}={}){
   const match=/^Bearer ([A-Za-z0-9_.-]+)$/.exec(event?.headers?.authorization||event?.headers?.Authorization||'');
   if(!match)return null;
   const token=match[1];
-  const r=await fetchImpl(url+'/auth/v1/user',{headers:headers(token),signal:AbortSignal.timeout(5000)});
+  const r=await fetchImpl(url+'/auth/v1/user',{headers:headers(token),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(5000)});
   if(!r.ok)return null;
   const user=await r.json();
   return UUID.test(user?.id||'')?{id:user.id,token}:null;
  }
  async function readSummary({token,organizationId}){
   if(!UUID.test(organizationId)||typeof token!=='string')throw new TypeError('Invalid summary request');
-  const r=await fetchImpl(url+'/rest/v1/rpc/aurea_manager_summary',{method:'POST',headers:headers(token),body:JSON.stringify({p_organization_id:organizationId}),signal:AbortSignal.timeout(7000)});
+  const r=await fetchImpl(url+'/rest/v1/rpc/aurea_manager_summary',{method:'POST',headers:headers(token),body:JSON.stringify({p_organization_id:organizationId}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(7000)});
   if(!r.ok)throw new Error('Manager summary denied');
   const rows=await r.json();
   if(!Array.isArray(rows))throw new Error('Invalid summary response');
@@ -30,13 +30,13 @@ function createManagerBridge({url,key,fetchImpl=globalThis.fetch}={}){
  }
  async function readAuthorizedPublications({token,organizationId}){
   if(!UUID.test(organizationId)||typeof token!=='string'||!token)throw new TypeError('Invalid publication request');
-  const r=await fetchImpl(url+'/rest/v1/rpc/aurea_manager_publications_v2',{method:'POST',headers:headers(token),body:JSON.stringify({p_organization_id:organizationId}),signal:AbortSignal.timeout(7000)});
+  const r=await fetchImpl(url+'/rest/v1/rpc/aurea_manager_publications_v2',{method:'POST',headers:headers(token),body:JSON.stringify({p_organization_id:organizationId}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(7000)});
   if(!r.ok)throw new Error('Publication denied');
   return require('./publication-row-adapter.cjs').normalizePublications(await r.json());
  }
  async function actionRpc(name,token,organizationId,params={}){
   if(!UUID.test(organizationId)||typeof token!=='string'||!token)throw new TypeError('Invalid activity request');
-  const r=await fetchImpl(url+'/rest/v1/rpc/'+name,{method:'POST',headers:headers(token),body:JSON.stringify({...params,p_organization_id:organizationId}),signal:AbortSignal.timeout(7000)});
+  const r=await fetchImpl(url+'/rest/v1/rpc/'+name,{method:'POST',headers:headers(token),body:JSON.stringify({...params,p_organization_id:organizationId}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(7000)});
   if(!r.ok)throw new Error('Activity request denied');
   return r.json();
  }
