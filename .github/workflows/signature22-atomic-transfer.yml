@@ -95,8 +95,8 @@ jobs:
           from pathlib import Path
           p=Path('architecture/employee-staging-browser-qa.cjs')
           s=p.read_text()
-          needle="  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);"
-          assert s.count(needle)==1
+          needle="assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);"
+          assert s.count(needle)==1, repr([line for line in s.splitlines() if "scrollWidth" in line])
           extra="""  console.log('Employee finale geometry', JSON.stringify(await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('*')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&(r.right>innerWidth+0.5||r.left< -0.5)}).map(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return {tag:e.tagName,id:e.id,cls:String(e.className).slice(0,150),left:r.left,right:r.right,width:r.width,scrollWidth:e.scrollWidth,clientWidth:e.clientWidth,position:s.position,display:s.display,minWidth:s.minWidth,maxWidth:s.maxWidth,overflowX:s.overflowX,whiteSpace:s.whiteSpace}}).slice(0,50)}))));
             await page.screenshot({path:'/tmp/employee-finale-'+width+'.png',fullPage:true});
           """
