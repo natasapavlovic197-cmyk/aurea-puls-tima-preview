@@ -19,13 +19,15 @@ test('Employee integration retains separate role and new six-question model',()=
  assert.ok(employee.includes('A_SPEAKUP'));
  assert.ok(employee.includes('R_RECOVERY'));
  assert.ok(employee.includes('R_RECOGNITION'));
- assert.ok(!manager.includes('A_CLARITY'),'Manager must not accidentally embed employee questionnaire');
+ assert.ok(manager.includes('A_CLARITY'),'Manager must use the same canonical item identity');
+ assert.doesNotMatch(manager, /function renderEmployee|name="answer"|id="optionalComment"/,'Manager must not embed employee questionnaire');
 });
 
 test('Manager overview includes the ten-domain catalogue without claiming live results',()=>{
  const labels=['Jasnoća uloge','Komunikacija','Obim posla','Psihološka sigurnost','Podrška rukovodioca','Saradnja u timu','Autonomija','Pravičnost i priznanje','Angažovanost i smisao','Oporavak'];
  for(const label of labels)assert.ok(manager.includes(label),'Missing '+label);
- assert.match(manager,/aureaRenderTenDomainCatalogue\(\)/);
- assert.match(manager,/Nema povezanih grupnih rezultata/);
- assert.match(manager,/najmanje 5 odgovora/);
+ assert.match(manager,/aureaExpandDomains/);
+ assert.match(manager,/aureaItemSelect/);
+ assert.match(manager,/Izmišljeni primer/);
+ assert.match(manager,/najmanje 5 važećih odgovora/i);
 });
