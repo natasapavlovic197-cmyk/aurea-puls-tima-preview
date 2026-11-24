@@ -41,6 +41,7 @@ jobs:
           path: |
             architecture/edge-alternative/runtime.bundle.cjs
             architecture/edge-alternative/entry.ts
+            architecture/edge-alternative/runtime.bundle.d.cts
             architecture/edge-alternative/deno.json
             architecture/edge-alternative/deno.lock
           if-no-files-found: error
