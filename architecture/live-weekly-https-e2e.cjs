@@ -31,12 +31,15 @@ async function main(){
  const tokens=createInvitationTokenSource(randomBytes(32).toString('hex'));
  const issue=createInvitationIssuer({pool,tokens});
  const mon=week+' 10:00:00 Europe/Belgrade';
- const admin=async(expr)=>sql("BEGIN; SELECT set_config('request.jwt.claims',jsonb_build_object('sub','"+a.u+"','role','authenticated','session_id',(SELECT id FROM auth.sessions WHERE user_id='"+a.u+"' ORDER BY created_at DESC LIMIT 1))::text,true); "+expr+"; COMMIT;");
+ const admin=async(expr)=>sql("SELECT set_config('request.jwt.claims',jsonb_build_object('sub','"+a.u+"','role','authenticated','session_id',(SELECT id FROM auth.sessions WHERE user_id='"+a.u+"' ORDER BY created_at DESC LIMIT 1))::text,true); "+expr+";");
  await sql("INSERT INTO aurea_delivery_rpc.active_recipients(organization_id,email) SELECT '"+a.o+"','qa-"+i+"-"+a.o+"@example.invalid' FROM generate_series(1,6) i");
  // Management SQL only advances the private test clock; all delivery operations use actual HTTPS.
+ console.log('STEP: prepare roster');
  const prep=await admin("SELECT * FROM aurea_delivery_rpc.prepare_monday('"+mon+"'::timestamptz)");
  assert.equal(prep.length,6);
- for(const x of prep){const args={organizationId:x.organization_id,weekStart:x.week_start,invitationId:x.invitation_id,email:x.email,expiresAt:new Date(x.expires_at).toISOString()};assert.equal((await issue(args)).state,'created');assert.equal((await issue(args)).state,'existing');}
+ console.log('STEP: issue HMAC');
+ for(const x of prep){const args={organizationId:x.organization_id,weekStart:String(x.week_start).slice(0,10),invitationId:x.invitation_id,email:x.email,expiresAt:new Date(x.expires_at).toISOString()};assert.equal((await issue(args)).state,'created');assert.equal((await issue(args)).state,'existing');}
+ console.log('STEP: initialize worker');
  const messages=[];
  const processNext=createDeliveryPipeline({pool,resolveInvitationToken:tokens.resolveInvitationToken,provider:{async send(m){assert.ok(m.to.endsWith('@example.invalid'));messages.push(m);return {accepted:true,id:'synthetic-'+randomUUID()}}},origin:'https://example.invalid',enabled:true});
  await admin("SELECT * FROM aurea_delivery_rpc.schedule_at('"+mon+"'::timestamptz)");
@@ -73,4 +76,4 @@ async function main(){
  console.log('PASS: synthetic users, sessions, companies, jobs and delivery permissions removed');
  }
 }
-main().catch(e=>{console.error('Delivery E2E failed: '+(e instanceof assert.AssertionError?'assertion '+e.message.split('\n')[0].slice(0,80): /^SQL HTTP \d+$/.test(e.message)?e.message:'execution error'));process.exitCode=1});
+main().catch(e=>{console.error('Delivery E2E failed: '+(e instanceof assert.AssertionError?'assertion '+e.message.split('\n')[0].slice(0,80): /^SQL HTTP \d+$/.test(e.message)?e.message:(e instanceof TypeError?'TypeError':e instanceof RangeError?'RangeError': /^Delivery HTTPS denied: \d+$/.test(e.message)?e.message:'execution error')));console.error(String(e.stack||'').split('\n').slice(1,5).map(x=>x.replace(/[^\x20-\x7e]/g,'')).join('\n'));process.exitCode=1});
