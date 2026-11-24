@@ -1,4 +1,4 @@
-name: AUREA P3 Netlify release gate (read only)
+name: AUREA P3 static draft deployment (approval required)
 on:
   workflow_dispatch:
 permissions:
@@ -7,61 +7,131 @@ concurrency:
   group: aurea-staging-admin-login
   cancel-in-progress: false
 jobs:
-  inspect:
+  package:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 98ad4c01ca006469e3437880fc390e391e7ff242
+          persist-credentials: false
+      - name: Build pinned candidate without secrets
+        env:
+          AUREA_POSTGREST_STAGING_BUILD: 'true'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "98ad4c01ca006469e3437880fc390e391e7ff242"
+          npm install --no-save --ignore-scripts esbuild@0.25.5 @supabase/supabase-js@2.49.4
+          node architecture/build-staging-manager.cjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: aurea-p3-public-candidate
+          path: dist-staging-manager/
+          if-no-files-found: error
+          retention-days: 1
+  draft:
+    needs: package
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
     environment: aurea-staging-admin
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Inspect exact site, deployment isolation and rollback anchor
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: aurea-p3-public-candidate
+          path: candidate
+      - name: Create static draft only; never publish or restore production
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
         run: |
           set -euo pipefail
           node <<'NODE'
-          const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708',BRANCH='integration/employee-ten-domains-step5';
+          const fs=require('node:fs'),crypto=require('node:crypto');
+          const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
+          const ANCHOR='6b0430517b51555c820d7d35';
+          const BRANCH='integration/employee-ten-domains-step5';
+          const TITLE='AUREA P3 static draft 98ad4c0';
+          const names=['employee.bundle.js','employee.html','index.html','manager-login.bundle.js','manager-login.css','staging-config.js'];
           const keys=['AUREA_DELIVERY_AUTH_USER_ID','AUREA_DELIVERY_AUTH_EMAIL','AUREA_DELIVERY_AUTH_PASSWORD','AUREA_INVITATION_HMAC_SECRET','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY'];
           const flags=['AUREA_DELIVERY_ENABLED','AUREA_DELIVERY_DEPLOY_APPROVED','AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED'];
-          let phase='guard';
-          function check(ok,label){if(!ok)throw Error('blocked');console.log('PASS '+label)}
-          async function get(p){
-            const r=await fetch('https://api.netlify.com/api/v1'+p,{headers:{authorization:'Bearer '+process.env.NETLIFY_AUTH_TOKEN,accept:'application/json'},redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(20000)});
-            if(!r.ok){await r.body?.cancel();throw Error('HTTP '+r.status)}
-            return {data:await r.json(),more:!!r.headers.get('link')?.includes('rel="next"')};
+          let phase='guard',id=null,creationAttempted=false;
+          const check=(ok,label)=>{if(!ok)throw Error('blocked');console.log('PASS '+label)};
+          const safeId=x=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(x);
+          async function api(method,path,body,type='application/json'){
+            const r=await fetch('https://api.netlify.com/api/v1'+path,{method,headers:{authorization:'Bearer '+process.env.NETLIFY_AUTH_TOKEN,accept:'application/json',...(body!==undefined?{'content-type':type}:{})},...(body===undefined?{}:{body:type==='application/json'?JSON.stringify(body):body}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(25000)});
+            if(!r.ok){await r.body?.cancel();throw Error('HTTP failure')}
+            if(method==='GET'&&r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('incomplete inventory')}
+            if(method==='PUT'){await r.body?.cancel();return null;}
+            return r.json();
           }
-          const safePath=x=>typeof x==='string'&&x.length<=200&&/^[a-zA-Z0-9_./-]*$/.test(x)?x:null;
-          const safeId=x=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(x)?x:null;
+          async function anchor(){
+            const s=await api('GET','/sites/'+SITE),b=s.build_settings||{};
+            if(s.id!==SITE||s.name!=='aurea-puls-tima-preview'||b.repo_branch!=='main'||(b.stop_builds??s.stop_builds)!==true||(s.published_deploy?.id||s.deploy_id)!==ANCHOR||!Array.isArray(b.allowed_branches)||b.allowed_branches.length!==1||b.allowed_branches[0]!=='main'||b.dir!=='.'||!safeId(s.account_id))throw Error('site drift');
+            return s;
+          }
+          function verifyDraft(d){
+            if(!d||d.id!==id||d.site_id!==SITE||d.draft!==true||d.context==='production'||d.published_at||!['new','preparing','prepared','uploading','uploaded','processing','processed','ready','enqueued','building'].includes(d.state)||!Array.isArray(d.required_functions)||d.required_functions.length!==0||(d.required_edge_functions??[]).length!==0||(d.function_schedules??[]).length!==0)throw Error('unexpected draft metadata');
+          }
           (async()=>{
             check(process.env.GITHUB_REPOSITORY==='natasapavlovic197-cmyk/aurea-puls-tima-preview'&&process.env.GITHUB_REF==='refs/heads/'+BRANCH&&process.env.NETLIFY_SITE_ID===SITE&&!!process.env.NETLIFY_AUTH_TOKEN,'exact execution boundary');
-            phase='site';
-            const site=(await get('/sites/'+SITE)).data,b=site.build_settings||{};
-            check(site.id===SITE&&site.name==='aurea-puls-tima-preview'&&b.repo_branch==='main'&&(b.stop_builds??site.stop_builds)===true&&!!safeId(site.account_id),'exact site, main production branch, builds stopped');
-            const meta={base:safePath(b.base),publish:safePath(b.dir),functions:safePath(b.functions_dir),buildCommandPresent:typeof b.cmd==='string'&&b.cmd.length>0,repoBranch:b.repo_branch,allowedBranches:Array.isArray(b.allowed_branches)?b.allowed_branches.filter(x=>typeof x==='string'&&/^[a-zA-Z0-9_./-]{1,160}$/.test(x)):null,branchDeployPolicy:typeof b.branch_deploy==='boolean'?b.branch_deploy:null,deployPreviewPolicy:typeof b.deploy_previews==='boolean'?b.deploy_previews:null};
-            console.log('SITE_METADATA '+JSON.stringify(meta));
-            phase='production rollback anchor';
-            const anchor=site.published_deploy?.id||site.deploy_id;
-            check(!!safeId(anchor),'published deploy anchor present');
-            const prod=(await get('/sites/'+SITE+'/deploys/'+encodeURIComponent(anchor))).data;
-            check(prod.id===anchor&&prod.site_id===SITE&&prod.state==='ready'&&prod.context==='production','published deploy ready and production context');
-            console.log('PRODUCTION_ANCHOR '+JSON.stringify({id:anchor,branch:safePath(prod.branch),commit:safeId(prod.commit_ref),context:prod.context,state:prod.state}));
-            phase='deploy inventory';
-            const list=await get('/sites/'+SITE+'/deploys?per_page=100');
-            check(Array.isArray(list.data),'deploy inventory available');
-            const candidates=list.data.filter(d=>d.branch===BRANCH).map(d=>({id:safeId(d.id),context:['production','branch-deploy','deploy-preview'].includes(d.context)?d.context:null,state:safeId(d.state),commit:safeId(d.commit_ref)}));
-            console.log('BRANCH_HISTORY '+JSON.stringify({complete:!list.more,entries:candidates}));
-            phase='secret metadata';
-            const base='/accounts/'+encodeURIComponent(site.account_id)+'/env';
-            const shared=await get(base),local=await get(base+'?site_id='+SITE);
-            check(!shared.more&&!local.more&&Array.isArray(shared.data)&&Array.isArray(local.data),'complete env inventory');
-            check(!shared.data.some(x=>keys.includes(x.key)||flags.includes(x.key))&&!local.data.some(x=>flags.includes(x.key)),'no shared delivery keys or activation flags');
-            for(const k of keys){
-              const rows=local.data.filter(x=>x.key===k),v=rows[0];
-              check(rows.length===1&&v.is_secret===true&&Array.isArray(v.scopes)&&v.scopes.length===1&&v.scopes[0]==='functions'&&Array.isArray(v.values)&&v.values.length===1&&v.values[0].context==='branch'&&v.values[0].context_parameter===BRANCH,'branch-only Functions metadata '+k);
+            phase='artifact';
+            check(JSON.stringify(fs.readdirSync('candidate').sort())===JSON.stringify(names),'exact six public files');
+            const bytes={},files={};
+            for(const n of names){
+              const p='candidate/'+n,stat=fs.lstatSync(p);
+              if(!stat.isFile()||stat.size<1||stat.size>5000000)throw Error('invalid file');
+              const b=fs.readFileSync(p),t=b.toString('utf8');
+              if(/AUREA_DELIVERY_AUTH_PASSWORD|AUREA_INVITATION_HMAC_SECRET|SUPABASE_ACCESS_TOKEN|SUPABASE_ADMIN_DB_PASSWORD|sb_secret_[A-Za-z0-9_-]+/.test(t))throw Error('secret marker');
+              if(n.endsWith('.html')&&!t.includes('<meta name="referrer" content="no-referrer">'))throw Error('referrer policy');
+              bytes[n]=b;files['/'+n]=crypto.createHash('sha1').update(b).digest('hex');
             }
-            phase='unchanged production';
-            const after=(await get('/sites/'+SITE)).data;
-            check((after.published_deploy?.id||after.deploy_id)===anchor&&(after.build_settings?.stop_builds??after.stop_builds)===true,'production anchor unchanged and builds still stopped');
-            console.log('READ ONLY COMPLETE; branch deployment capability and rollback procedure require review of returned metadata and provider documentation. No deployment or restore executed.');
-          })().catch(()=>{console.error('BLOCKED '+phase+'; raw diagnostics suppressed');process.exitCode=1});
+            check(bytes['staging-config.js'].toString('utf8')==='globalThis.AUREA_STAGING_CONFIG=Object.freeze('+JSON.stringify({url:'https://ublzmoroanhlcgpnxilw.supabase.co',key:'sb_publishable_Za18LIyl1qfx2Tlucyj3Xg_CSWRukS6',endpoint:'/api/manager-workspace',transport:'postgrest'})+');\n','exact public staging config');
+            phase='site and env';
+            const s=await anchor(),base='/accounts/'+encodeURIComponent(s.account_id)+'/env';
+            const shared=await api('GET',base),local=await api('GET',base+'?site_id='+SITE);
+            check(Array.isArray(shared)&&Array.isArray(local)&&!shared.some(x=>keys.includes(x.key)||flags.includes(x.key))&&!local.some(x=>flags.includes(x.key)),'activation flags absent and no shared delivery keys');
+            for(const k of keys){
+              const rows=local.filter(x=>x.key===k),v=rows[0];
+              if(rows.length!==1||v.is_secret!==true||v.scopes?.length!==1||v.scopes[0]!=='functions'||v.values?.length!==1||v.values[0].context!=='branch'||v.values[0].context_parameter!==BRANCH)throw Error('secret scope drift');
+            }
+            check(true,'existing branch secrets unchanged; not injected');
+            phase='create draft';
+            await anchor();
+            creationAttempted=true;
+            const d=await api('POST','/sites/'+SITE+'/deploys',{draft:true,files,functions:{},edge_functions:{},function_schedules:[]});
+            if(!safeId(d?.id))throw Error('unknown deploy id');
+            id=d.id;
+            console.log('DRAFT_ID '+id);
+            verifyDraft(d);
+            await anchor();
+            phase='upload draft files';
+            if(!Array.isArray(d.required)||d.required.some(h=>!Object.values(files).includes(h)))throw Error('unexpected digest');
+            for(const h of new Set(d.required)){
+              const n=names.find(n=>files['/'+n]===h);
+              await api('PUT','/deploys/'+id+'/files/'+encodeURIComponent(n),bytes[n],'application/octet-stream');
+            }
+            phase='wait for draft';
+            let ready;
+            for(let i=0;i<36;i++){
+              const v=await api('GET','/sites/'+SITE+'/deploys/'+id);
+              verifyDraft(v);
+              if(v.state==='ready'){ready=v;break;}
+              await new Promise(r=>setTimeout(r,3000));
+            }
+            check(!!ready,'draft ready, no function uploads');
+            await anchor();
+            check(true,'production anchor and stopped builds unchanged');
+            phase='draft URL';
+            const u=new URL(ready.deploy_ssl_url);
+            check(u.protocol==='https:'&&u.hostname===id+'--aurea-puls-tima-preview.netlify.app'&&u.pathname==='/'&&!u.search&&!u.hash&&!u.username&&!u.password,'unique draft URL');
+            console.log('DRAFT_URL '+u.origin);
+            console.log('STATIC ONLY: no runtime credential validation, no scheduler, no emails, no publish or restore');
+          })().catch(async()=>{
+            console.error('BLOCKED '+phase+'; raw diagnostics suppressed');
+            if(creationAttempted)console.error('RECONCILE draft '+(id||'unknown id')+'; do not blindly retry or restore');
+            try{await anchor();console.log('PASS production anchor unchanged after failure')}catch{console.error('CRITICAL production anchor unconfirmed; manual review required')}
+            process.exitCode=1;
+          });
           NODE
