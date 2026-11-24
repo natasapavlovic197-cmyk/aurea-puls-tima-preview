@@ -62,3 +62,38 @@ jobs:
           jq -e --arg site_id "$NETLIFY_SITE_ID" '.id == $site_id' "$response_file" >/dev/null
           echo "PASS: Netlify API returned HTTP 200 for the configured site."
           jq '{id, name, url, ssl_url, custom_domain, repo_url, build_settings: {repo_branch: .build_settings.repo_branch}}' "$response_file"
+
+      - name: Inspect owning team plan (read-only)
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$NETLIFY_SITE_ID" = "91ffeb5a-796e-4b2a-9fde-517c7e42f708"
+          umask 077
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          get() {
+            local code
+            code="$(curl --silent --show-error --max-time 25 --proto '=https' --request GET --header "Authorization: Bearer $NETLIFY_AUTH_TOKEN" --header 'Accept: application/json' --output "$2" --write-out '%{http_code}' "https://api.netlify.com/api/v1/$1")"
+            if [ "$code" != 200 ]; then
+              echo "::error::Read-only lookup failed with HTTP $code"
+              return 1
+            fi
+          }
+          get "sites/$NETLIFY_SITE_ID" "$tmp/site.json"
+          jq -e --arg id "$NETLIFY_SITE_ID" '.id == $id and .name == "aurea-puls-tima-preview"' "$tmp/site.json" >/dev/null
+          get accounts "$tmp/accounts.json"
+          # Match only the owning team, never infer a plan from another account.
+          jq -e --slurpfile site "$tmp/site.json" '
+            ($site[0]) as $s |
+            map(select((($s.account_id // "") != "" and .id == $s.account_id) or
+              (($s.account_slug // "") != "" and .slug == $s.account_slug))) |
+            if length == 1 then .[0] else error("Owning team not uniquely resolved") end |
+            {plan: (.type_name // .plan // null), plan_type: (.type // null)}
+          ' "$tmp/accounts.json" > "$tmp/plan.json"
+          jq -e '.plan != null and (.plan | type == "string")' "$tmp/plan.json" >/dev/null
+          jq 'with_entries(.value |= (if type == "string" and test("^[A-Za-z0-9 _.-]{1,80}$") then . else "unconfirmed" end))' "$tmp/plan.json"
+          jq '{builds_stopped: (if (.build_settings.stop_builds | type) == "boolean" then .build_settings.stop_builds elif (.stop_builds | type) == "boolean" then .stop_builds else "unconfirmed" end)}' "$tmp/site.json"
+          echo "READ ONLY: plan metadata does not establish write entitlement. No environment variables retrieved or changed."
