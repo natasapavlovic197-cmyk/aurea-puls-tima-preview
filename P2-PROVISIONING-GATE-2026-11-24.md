@@ -7,7 +7,7 @@
 - Staging ref ublzmoroanhlcgpnxilw; pooler aws-1-eu-west-1.pooler.supabase.com:5432; database postgres; restricted login aurea_limiter_login.<project-ref>.
 - Prior read-only logging evidence: log_statement=ddl, log_min_error_statement=error, track_activities=on, pg_stat_statements.track_utility=on, password_encryption=scram-sha-256. Do not weaken logging.
 
-## Proposed synthetic redaction test — NOT authorized or executed
+## Proposed synthetic redaction test — approved; connector attempt blocked, not executed
 1. Obtain separate approval for temporary staging role DDL, and an authenticated administrative psql session with verify-full TLS and trusted CA; never use the admin identity in runtime. Confirm target project via independent authenticated evidence. No credentials in chat, command arguments, SQL tool calls, git or logs.
 2. Use a unique non-existing disposable role (prefix aurea_redaction_probe_), NOLOGIN, NOINHERIT, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOBYPASSRLS, no grants or memberships. Use only a publicly known synthetic canary which is never a real credential. Prefer one transaction with BEGIN / CREATE ROLE / psql password mechanism / ROLLBACK. Confirm the role is absent after rollback; abort if unexpected name conflict. If transaction behavior is unsupported, stop rather than silently creating persistent roles.
 3. Test the exact eventual provisioning route and client, including the successful password-setting statement and a controlled error case (savepoint or separate rollback-only transaction). Never deliberately submit actual secrets. psql password processing can send a SCRAM verifier; that verifier is sensitive for real credentials.
@@ -23,3 +23,10 @@
 - P2.4 remains open pending redaction proof, write authority, reviewed live adapter and owner approval. Separate production environment and deployment approval remain later gates.
 
 No test executed, no password generated, no SQL or Netlify write, no deployment, no TinyFish by this record.
+
+## Subsequent evidence — 2026-11-24
+- Netlify run 45396013619, job 138451870288, commit 03c0a6c700191685f53f5fd92debf84bcc5ca365: 11 controls passed, POST 201, exact Functions-only branch metadata verified, no shared key, owned DELETE 204, GET 404 and shared absence. Public synthetic value only. No real secret write, runtime isolation or atomic compare-delete proven.
+- SQL connector confirmed CREATEROLE and log visibility; synthetic password DDL request blocked by tool safety control. Do not reroute that blocked operation. No redaction result established.
+- Official PostgreSQL psql password mechanism protects plaintext by client-side encryption: https://www.postgresql.org/docs/16/app-psql.html . SCRAM verifier remains sensitive and redaction not proven. Supabase KB search excerpt warns of logging failure cases; full page unavailable: https://supabase.com/kb/troubleshooting/provisioning-credentials-without-log-exposure . No guarantee of verifier absence.
+- Official supported alternative for temporary administrative authentication: https://supabase.com/docs/guides/platform/temporary-access . Existing project SQL reports server_version 17.12; exact Supabase image version and JIT enablement/mapping not yet established. Management GET /v1/projects/{ref}/database/jit-access is read-only. PAT can be used only under provider-authorized role mapping, expiry and network restrictions; shared pooler requires jit=on. Never place a broad admin PAT in runtime. JIT configuration or mappings require separate explicit approval; not changed. This is an administrative access candidate, not a solution to verifier logging or authorization to bypass the connector block.
+- Netlify public write entitlement closed in tested scope. Real password provisioning remains blocked pending provider-supported redaction evidence and authorized administrative procedure. No deployment or secrets written.
