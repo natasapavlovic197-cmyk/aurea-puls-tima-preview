@@ -1,4 +1,5 @@
 import pg from "npm:pg@8.16.3";
+// @ts-types="./runtime.bundle.d.cts"
 import runtime from "./runtime.bundle.cjs";
 Deno.test("driver loads, runtime remains closed without approval", () => {
   if(typeof pg.Pool !== "function") throw Error("Missing driver");

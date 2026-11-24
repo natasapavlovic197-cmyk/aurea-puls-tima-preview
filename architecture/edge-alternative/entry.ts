@@ -1,6 +1,7 @@
 // Candidate only. Bundle runtime.cjs into runtime.bundle.cjs before Deno verification.
 // Never deploy this file over the existing functions.
 import pg from "npm:pg@8.16.3";
+// @ts-types="./runtime.bundle.d.cts"
 import runtime from "./runtime.bundle.cjs";
 const routes = new Set(["employee-invitation","employee-submit","manager-summary","manager-workspace","manager-session"]);
 let service: ReturnType<typeof runtime.createEdgeRuntime> | undefined;
