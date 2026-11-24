@@ -1,6 +1,8 @@
 'use strict';
+const {guide:signatureGuide}=require('./signature22-guide.cjs');
 const {CATALOG}=require('./manager-interventions.cjs');
 const {mountSimulation}=require('./signature-manager-simulation.cjs');
+const {educationFrame}=require('./signature22-education-frame.cjs');
 const {anchors,rotation,weeklyItems}=require('./psychometric-item-bank.cjs');
 const ITEMS=[...anchors,...rotation.flat()];
 const ITEM_LABELS={A_CLARITY:'Jasnoća očekivanja',A_WORKLOAD:'Održivo radno opterećenje',A_SPEAKUP:'Sloboda ukazivanja na problem',R_LEADER_HELP:'Dostupnost podrške rukovodioca',R_INFO:'Pravovremenost informacija',R_PRIORITY:'Jasnoća promenjenih prioriteta',R_COOP:'Međusobna pomoć',R_TRUST:'Pouzdanost dogovora',R_FEEDBACK:'Povratne informacije',R_AUTONOMY:'Samostalnost u radu',R_FAIRNESS:'Pravičnost raspodele zadataka',R_RECOGNITION:'Prepoznavanje truda',R_MEANING:'Smisao posla',R_RECOVERY:'Oporavak između radnih dana',R_RESOURCES:'Dostupnost radnih resursa'};
@@ -50,6 +52,11 @@ function mountPremiumManager(root,client){
  if(disposed||!data)return;
  const nav='<nav class="v35nav" aria-label="Navigacija rukovodioca">'+[['overview','Moj pregled'],['activities','Moje aktivnosti'],['guidance','Plan za tim']].map(([s,t])=>'<button class="btn" data-screen="'+s+'" '+(screen===s?'aria-current="page"':'')+'>'+t+'</button>').join('')+'</nav>';
  let content='';
+ if(screen==='education'){
+ root.innerHTML=nav+educationFrame();
+ root.querySelectorAll('[data-screen]').forEach(b=>b.onclick=()=>go(b.dataset.screen));
+ $('signatureEducationExit').onclick=()=>go('overview');return;
+ }
  if(screen==='simulation'){
  root.innerHTML=nav+'<div id="signatureSimulation" class="section"></div>';
  root.querySelectorAll('[data-screen]').forEach(b=>b.onclick=()=>go(b.dataset.screen));
@@ -69,9 +76,10 @@ function mountPremiumManager(root,client){
  const rec=(data.report.recommendations||[])[0],topic=rec?.domain||selected,option=CATALOG[topic];
  content='<div class="panel section fade" id="guide"><span class="eyebrow" style="color:var(--wine2)">PLAN ZA TIM · KORAK '+(guide+1)+' OD 3</span>'+(guide===0?'<h2>Šta bi trebalo prvo proveriti?</h2><div class="notice">'+safe(rec?rec.action:'Tema za dobrovoljno razmatranje: '+(option?.title||'Organizacija rada')+'. Ovo nije automatski signal.')+'</div>'+(rec?'<button class="btn" id="useRec">Koristi predlog kao osnovu plana</button>':'')+'<button class="btn primary" id="nextManager">Nastavite</button>':guide===1?'<h2>Šta ste zapazili u radu tima?</h2><p>Razmotrite sopstvena zapažanja bez zaključivanja o pojedincima. Izaberite kontekst koji želite da proverite; uzrok nije utvrđen.</p><label for="observation">Organizacioni kontekst</label><select class="field" id="observation">'+[['','Odaberite ili preskočite'],['priorities','Promene prioriteta'],['interruptions','Prekidi i tok rada'],['capacity','Raspodela zadataka i resursi'],['communication','Informacije i dogovori'],['support','Dostupnost podrške'],['other','Drugi organizacioni kontekst'],['unknown','Nemam dovoljno informacija']].map(([v,t])=>'<option value="'+v+'" '+(observation===v?'selected':'')+'>'+t+'</option>').join('')+'</select><p class="fine">Ovaj izbor služi refleksiji i ne čuva se zasebno.</p><button class="btn" id="backManager">Nazad</button><button class="btn primary" id="nextManager">Sastavite plan aktivnosti</button>':'<h2>Koji korak možete da preduzmete?</h2><p class="muted">Izaberite mali, izvodljiv korak, rok i način provere. Ne unosite imena ili individualne odgovore.</p>'+(option&&!draft.actionId?'<div class="notice"><b>Predlog za razmatranje</b><p>'+safe(option.action)+'</p><p class="fine">Naknadna provera: '+safe(option.check)+'</p><button type="button" class="btn" id="insertPlan">Dodaj predlog u opis aktivnosti</button></div>':'')+'<label for="actionText">Aktivnost</label><textarea class="field" id="actionText" aria-label="Opis aktivnosti" maxlength="2000">'+safe(draft.description)+'</textarea><label for="due">Rok</label><input class="field" id="due" aria-label="Rok aktivnosti" type="date" value="'+safe(draft.dueOn)+'"><label for="actionStatus">Status</label><select class="field" id="actionStatus"><option value="open" '+(draft.status==='open'?'selected':'')+'>Otvoreno</option><option value="done" '+(draft.status==='done'?'selected':'')+'>Završeno</option></select><div class="actions"><button class="btn" id="backManager">Nazad</button><button class="btn primary" id="saveAction" '+(busy?'disabled':'')+'>Sačuvaj aktivnost</button></div>')+'</div>';
  }
- root.innerHTML=nav+content+(screen==='overview'?'<div class="panel section"><span class="eyebrow" style="color:var(--wine2)">AUREA · RAZVOJ RUKOVODIOCA</span><h2>Prostor za vežbanje odluka.</h2><p class="muted">Razmotrite tri situacije i različite pristupe u izmišljenom timu. Odvojeno od rezultata Vaše kompanije.</p><button type="button" class="btn" id="signatureStartSimulation">Pokrenite simulaciju</button></div>':'')+(error?'<p role="alert" class="notice">'+safe(error)+'</p>':'');
+ root.innerHTML=nav+(screen==='overview'||screen==='guidance'||screen==='complete'?signatureGuide:'')+content+(screen==='overview'?'<div class="panel section"><span class="eyebrow" style="color:var(--wine2)">AUREA · RAZVOJ RUKOVODIOCA</span><h2>Prostor za vežbanje odluka.</h2><p class="muted">Razmotrite tri situacije i različite pristupe u izmišljenom timu. Odvojeno od rezultata Vaše kompanije.</p><button type="button" class="btn" id="signatureStartSimulation">Pokrenite simulaciju</button><button type="button" class="btn" id="signatureStartEducation">Razgovori sa likovima</button></div>':'')+(error?'<p role="alert" class="notice">'+safe(error)+'</p>':'');
  root.querySelectorAll('[data-screen]').forEach(b=>b.onclick=()=>go(b.dataset.screen));
  root.querySelectorAll('[data-domain]').forEach(b=>b.onclick=()=>{selected=b.dataset.domain;render()});
+ if($('signatureStartEducation'))$('signatureStartEducation').onclick=()=>go('education');
  if($('signatureStartSimulation'))$('signatureStartSimulation').onclick=()=>go('simulation');
  if($('aureaExpandDomains'))$('aureaExpandDomains').onclick=()=>{expanded=!expanded;if(!expanded&&!PRIMARY.includes(selected))selected='workload';render()};
  if($('aureaItemSelect'))$('aureaItemSelect').onchange=e=>{chosen[selected]={code:e.target.value};render()};

@@ -11,7 +11,7 @@ function premiumManager(source){
  .replace(/<nav class="v35nav"[\s\S]*?<\/nav>/,'')
  .replace('<section id="manager" class="fade"></section>','<section id="manager-login" class="panel section"><p role="status">Razvojno okruženje nije konfigurisano.</p></section>')
  .replace(/<footer class="footer">[\s\S]*?<\/footer>/,'<footer class="footer">AUREA · Puls tima · Grupni rezultati, bez individualnih odgovora.</footer>')
- .replace('</head>','<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow"></head>')
- +'<script src="/staging-config.js" defer></script><script src="/manager-login.bundle.js" defer></script></body></html>';
+ .replace('</head>','<link rel="stylesheet" href="/signature22-manager.css"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow"></head>')
+ +'<script src="/signature-motion.js" defer></script><script src="/staging-config.js" defer></script><script src="/manager-login.bundle.js" defer></script></body></html>';
 }
 module.exports={premiumManager};
