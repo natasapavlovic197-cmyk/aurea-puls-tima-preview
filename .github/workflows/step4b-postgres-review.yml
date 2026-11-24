@@ -41,6 +41,8 @@ jobs:
           test "$PGDATABASE" = aurea_fixture
           cd architecture/postgrest-runtime
           psql -X -v ON_ERROR_STOP=1 -f step4b-postgres-fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f step4b-original-functions.fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f step4b-rollback-baseline.synthetic.sql
           psql -X -v ON_ERROR_STOP=1 -f step4b-unified-publication.review.sql
           psql -X -v ON_ERROR_STOP=1 -f step4b-unified-publication.synthetic.sql
           psql -X -v ON_ERROR_STOP=1 -f step4b-postgres-actual.synthetic.sql
@@ -59,3 +61,11 @@ jobs:
           set -eu
           psql -X -v ON_ERROR_STOP=1 -f architecture/step4b-concurrency-fixture.sql
           python3 architecture/step4b-concurrency-test.py
+      - name: Complete migration rollback on disposable database
+        run: |
+          set -eu
+          test "$PGHOST" = 127.0.0.1
+          test "$PGDATABASE" = aurea_fixture
+          psql -X -v ON_ERROR_STOP=1 -c "CREATE TABLE public.qa_before_answers AS SELECT * FROM aurea_private.response_answers; CREATE TABLE public.qa_before_responses AS SELECT * FROM aurea_private.responses; CREATE TABLE public.qa_before_digests AS SELECT * FROM aurea_private.weekly_report_digests"
+          psql -X -v ON_ERROR_STOP=1 -f architecture/postgrest-runtime/step4b-unified-publication.rollback.sql
+          psql -X -v ON_ERROR_STOP=1 -f architecture/postgrest-runtime/step4b-rollback-verify.synthetic.sql

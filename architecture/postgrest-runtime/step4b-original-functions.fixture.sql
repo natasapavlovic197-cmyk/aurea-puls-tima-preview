@@ -1,0 +1,112 @@
+CREATE OR REPLACE FUNCTION aurea_delivery_rpc.impl_delivery_publications(p_job bigint, p_lease uuid, p_org uuid, p_week date)
+ RETURNS TABLE(week_start text, item_code text, item_version integer, domain text, response_count integer, favorable_percent double precision, closed boolean)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ perform aurea_delivery_rpc.require_job(p_job,p_lease); perform aurea_delivery_rpc.require_org(p_org);
+ if not exists(select 1 from aurea_private.weekly_delivery_jobs j join aurea_private.cycles c on c.organization_id=j.organization_id and c.week_start=j.week_start where j.id=p_job and j.lease_token=p_lease and j.status='processing' and j.lease_expires_at>clock_timestamp() and j.organization_id=p_org and j.week_start=p_week and j.action='report' and c.state='closed') then raise exception 'Invalid report scope'; end if;
+ return query select c.week_start::text,q.code,q.item_version,q.domain,count(a.rating)::integer,round(100.0*count(*) filter(where a.rating>=4)/nullif(count(a.rating),0),1)::double precision,true from aurea_private.cycles c join aurea_private.responses r on r.cycle_id=c.id join aurea_private.response_answers a on a.response_id=r.id join aurea_private.questions q on q.id=a.question_id join aurea_private.cycle_questions cq on cq.cycle_id=c.id and cq.question_id=q.id where c.organization_id=p_org and c.week_start<=p_week and c.state='closed' and c.model_version=2 and q.model_version=2 group by c.week_start,q.code,q.item_version,q.domain having count(a.rating)>=5 order by c.week_start,q.code;
+end $function$;
+
+CREATE OR REPLACE FUNCTION aurea_delivery_rpc.impl_persist_weekly_digest(p_job bigint, p_lease uuid, p_digest jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare j aurea_private.weekly_delivery_jobs%rowtype; saved jsonb;
+begin
+ perform aurea_delivery_rpc.require_job(p_job,p_lease);
+select * into j from aurea_private.weekly_delivery_jobs where id=p_job and action='report' and status='processing' and lease_token=p_lease and lease_expires_at>clock_timestamp() for update;
+if not found then return false; end if;
+if not exists(select 1 from aurea_private.cycles c where c.organization_id=j.organization_id and c.week_start=j.week_start and c.state='closed') then return false; end if;
+if jsonb_typeof(p_digest) is distinct from 'object' or p_digest->>'weekStart' is distinct from j.week_start::text or jsonb_typeof(p_digest->'domains') is distinct from 'array' then return false; end if;
+if exists(select 1 from jsonb_object_keys(p_digest) k where k not in ('weekStart','coverage','domains','nextAction','note')) then return false; end if;
+if jsonb_typeof(p_digest->'coverage') is distinct from 'number' or p_digest->>'coverage' is distinct from jsonb_array_length(p_digest->'domains')::text then return false; end if;
+-- Every published item must match a current, closed, model-v2 aggregate of at least five.
+if exists(select 1 from jsonb_array_elements(p_digest->'domains') d where jsonb_typeof(d) is distinct from 'object' or jsonb_typeof(d->'items') is distinct from 'array' or exists(select 1 from jsonb_object_keys(d) k where k not in ('label','items'))) then return false; end if;
+if exists(select 1 from jsonb_array_elements(p_digest->'domains') d cross join lateral jsonb_array_elements(d->'items') i where jsonb_typeof(i) is distinct from 'object' or exists(select 1 from jsonb_object_keys(i) k where k not in ('code','favorablePercent')) or not exists(select 1 from aurea_private.cycles c join aurea_private.responses r on r.cycle_id=c.id join aurea_private.response_answers a on a.response_id=r.id join aurea_private.questions q on q.id=a.question_id join aurea_private.cycle_questions cq on cq.cycle_id=c.id and cq.question_id=q.id where c.organization_id=j.organization_id and c.week_start=j.week_start and c.state='closed' and c.model_version=2 and q.model_version=2 and q.code=i->>'code' group by q.id having count(a.rating)>=5 and to_jsonb(round(100.0*count(*) filter(where a.rating>=4)/nullif(count(a.rating),0),1))=i->'favorablePercent')) then return false; end if;
+insert into aurea_private.weekly_report_digests(organization_id,week_start,digest) values(j.organization_id,j.week_start,p_digest) on conflict(organization_id,week_start) do nothing;
+select digest into saved from aurea_private.weekly_report_digests where organization_id=j.organization_id and week_start=j.week_start;
+return saved=p_digest;
+end $function$;
+
+CREATE OR REPLACE FUNCTION aurea_private.delivery_publications(p_job bigint, p_lease uuid, p_org uuid, p_week date)
+ RETURNS TABLE(week_start text, item_code text, item_version integer, domain text, response_count integer, favorable_percent double precision, closed boolean)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ if session_user not in ('aurea_delivery_login','postgres') then raise exception 'Delivery access denied' using errcode='42501'; end if;
+ if not exists(select 1 from aurea_private.weekly_delivery_jobs j join aurea_private.cycles c on c.organization_id=j.organization_id and c.week_start=j.week_start where j.id=p_job and j.lease_token=p_lease and j.status='processing' and j.lease_expires_at>clock_timestamp() and j.organization_id=p_org and j.week_start=p_week and j.action='report' and c.state='closed') then raise exception 'Invalid report scope'; end if;
+ return query select c.week_start::text,q.code,q.item_version,q.domain,count(a.rating)::integer,round(100.0*count(*) filter(where a.rating>=4)/nullif(count(a.rating),0),1)::double precision,true from aurea_private.cycles c join aurea_private.responses r on r.cycle_id=c.id join aurea_private.response_answers a on a.response_id=r.id join aurea_private.questions q on q.id=a.question_id join aurea_private.cycle_questions cq on cq.cycle_id=c.id and cq.question_id=q.id where c.organization_id=p_org and c.week_start<=p_week and c.state='closed' and c.model_version=2 and q.model_version=2 group by c.week_start,q.code,q.item_version,q.domain having count(a.rating)>=5 order by c.week_start,q.code;
+end $function$;
+
+CREATE OR REPLACE FUNCTION aurea_private.manager_publications_v2(p_org uuid)
+ RETURNS TABLE(week_start date, item_code text, item_version integer, domain text, response_count bigint, favorable_percent numeric, closed boolean)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+ perform aurea_manager_rpc.check_session_and_limit();
+if auth.uid() is null or not exists(select 1 from aurea_private.memberships m where m.organization_id=p_org and m.user_id=auth.uid() and m.role in ('owner','manager')) then raise exception 'Access denied' using errcode='42501'; end if;
+return query select c.week_start,q.code,q.item_version,q.domain,count(a.rating),round(100.0*count(*) filter(where a.rating>=4)/nullif(count(a.rating),0),1),true
+from aurea_private.cycles c join aurea_private.responses r on r.cycle_id=c.id join aurea_private.response_answers a on a.response_id=r.id join aurea_private.questions q on q.id=a.question_id join aurea_private.cycle_questions cq on cq.cycle_id=c.id and cq.question_id=q.id
+where c.organization_id=p_org and c.state='closed' and c.model_version=2 and q.model_version=2
+group by c.week_start,q.code,q.item_version,q.domain having count(a.rating)>=5 order by c.week_start,q.code;
+end $function$;
+
+CREATE OR REPLACE FUNCTION aurea_private.persist_weekly_digest(p_job bigint, p_lease uuid, p_digest jsonb)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare j aurea_private.weekly_delivery_jobs%rowtype; saved jsonb;
+begin
+ if session_user not in ('aurea_delivery_login','postgres') then raise exception 'Delivery access denied' using errcode='42501'; end if;
+select * into j from aurea_private.weekly_delivery_jobs where id=p_job and action='report' and status='processing' and lease_token=p_lease and lease_expires_at>clock_timestamp() for update;
+if not found then return false; end if;
+if not exists(select 1 from aurea_private.cycles c where c.organization_id=j.organization_id and c.week_start=j.week_start and c.state='closed') then return false; end if;
+if jsonb_typeof(p_digest) is distinct from 'object' or p_digest->>'weekStart' is distinct from j.week_start::text or jsonb_typeof(p_digest->'domains') is distinct from 'array' then return false; end if;
+if exists(select 1 from jsonb_object_keys(p_digest) k where k not in ('weekStart','coverage','domains','nextAction','note')) then return false; end if;
+if jsonb_typeof(p_digest->'coverage') is distinct from 'number' or p_digest->>'coverage' is distinct from jsonb_array_length(p_digest->'domains')::text then return false; end if;
+-- Every published item must match a current, closed, model-v2 aggregate of at least five.
+if exists(select 1 from jsonb_array_elements(p_digest->'domains') d where jsonb_typeof(d) is distinct from 'object' or jsonb_typeof(d->'items') is distinct from 'array' or exists(select 1 from jsonb_object_keys(d) k where k not in ('label','items'))) then return false; end if;
+if exists(select 1 from jsonb_array_elements(p_digest->'domains') d cross join lateral jsonb_array_elements(d->'items') i where jsonb_typeof(i) is distinct from 'object' or exists(select 1 from jsonb_object_keys(i) k where k not in ('code','favorablePercent')) or not exists(select 1 from aurea_private.cycles c join aurea_private.responses r on r.cycle_id=c.id join aurea_private.response_answers a on a.response_id=r.id join aurea_private.questions q on q.id=a.question_id join aurea_private.cycle_questions cq on cq.cycle_id=c.id and cq.question_id=q.id where c.organization_id=j.organization_id and c.week_start=j.week_start and c.state='closed' and c.model_version=2 and q.model_version=2 and q.code=i->>'code' group by q.id having count(a.rating)>=5 and to_jsonb(round(100.0*count(*) filter(where a.rating>=4)/nullif(count(a.rating),0),1))=i->'favorablePercent')) then return false; end if;
+insert into aurea_private.weekly_report_digests(organization_id,week_start,digest) values(j.organization_id,j.week_start,p_digest) on conflict(organization_id,week_start) do nothing;
+select digest into saved from aurea_private.weekly_report_digests where organization_id=j.organization_id and week_start=j.week_start;
+return saved=p_digest;
+end $function$;
+
+CREATE OR REPLACE FUNCTION aurea_private.pulse_summary(p_organization_id uuid, p_min_responses integer DEFAULT 5)
+ RETURNS TABLE(week_start date, question_code text, domain text, response_count bigint, favorable_percent numeric)
+ LANGUAGE sql
+ STABLE
+ SET search_path TO ''
+AS $function$
+with eligible as (
+ select c.id,c.week_start
+ from aurea_private.cycles c
+ where c.organization_id=p_organization_id and c.state='closed'
+ and (select count(*) from aurea_private.responses r where r.cycle_id=c.id)>=greatest(5,coalesce(p_min_responses,5))
+),
+answer_totals as (
+ select e.week_start,q.code,q.domain,
+ count(ra.rating) as n,
+ round(100.0*count(*) filter(where ra.rating>=4)/nullif(count(ra.rating),0),1) as pct
+ from eligible e
+ join aurea_private.responses r on r.cycle_id=e.id
+ join aurea_private.response_answers ra on ra.response_id=r.id
+ join aurea_private.questions q on q.id=ra.question_id
+ group by e.week_start,q.code,q.domain
+)
+select a.week_start,a.code,a.domain,a.n,a.pct
+from answer_totals a
+where a.n>=greatest(5,coalesce(p_min_responses,5))
+order by a.week_start,a.code
+$function$;
