@@ -86,6 +86,24 @@ jobs:
           m=Path('/tmp/signature.sha256')
           m.write_text(m.read_text().replace('bccc461404dc2927f4503d39702a4181692de52f57df111f3e87d8306fb1f907',hashlib.sha256(p.read_bytes()).hexdigest()))
           PY
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('architecture/staging-manager-server.cjs')
+          b=p.read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='7e14e7e51c0256fbc0cd33e24093b040d3641786'
+          old=b"['/staging-config.js','staging-config.js']"
+          new=old+b",['/signature22-employee.css','signature22-employee.css'],['/signature22-manager.css','signature22-manager.css'],['/signature-motion.js','signature-motion.js'],['/assets/natasa-guide.webp','assets/natasa-guide.webp'],['/signature-education.html','signature-education.html']"
+          assert b.count(old)==1
+          b=b.replace(old,new)
+          old=b"file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'"
+          assert b.count(old)==1
+          b=b.replace(old,b"file.endsWith('.css')?'text/css; charset=utf-8':file.endsWith('.webp')?'image/webp':'text/html; charset=utf-8'")
+          p.write_bytes(b)
+          m=Path('/tmp/signature.sha256')
+          with m.open('a') as f:
+              f.write(hashlib.sha256(b).hexdigest()+' architecture/staging-manager-server.cjs\n')
+          PY
           node architecture/build-staging-manager.cjs
           node --test architecture/signature22-education.test.cjs
           npx playwright install --with-deps chromium
@@ -172,13 +190,31 @@ jobs:
           m=Path('/tmp/signature.sha256')
           m.write_text(m.read_text().replace(old,new))
           PY
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('architecture/staging-manager-server.cjs')
+          b=p.read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='7e14e7e51c0256fbc0cd33e24093b040d3641786'
+          old=b"['/staging-config.js','staging-config.js']"
+          new=old+b",['/signature22-employee.css','signature22-employee.css'],['/signature22-manager.css','signature22-manager.css'],['/signature-motion.js','signature-motion.js'],['/assets/natasa-guide.webp','assets/natasa-guide.webp'],['/signature-education.html','signature-education.html']"
+          assert b.count(old)==1
+          b=b.replace(old,new)
+          old=b"file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8'"
+          assert b.count(old)==1
+          b=b.replace(old,b"file.endsWith('.css')?'text/css; charset=utf-8':file.endsWith('.webp')?'image/webp':'text/html; charset=utf-8'")
+          p.write_bytes(b)
+          m=Path('/tmp/signature.sha256')
+          with m.open('a') as f:
+              f.write(hashlib.sha256(b).hexdigest()+' architecture/staging-manager-server.cjs\n')
+          PY
           (cd /tmp/verified && sha256sum -c /tmp/signature.sha256)
           while read -r hash file; do
             install -D -m 644 "/tmp/verified/$file" "$file"
             git add -- "$file"
           done < /tmp/signature.sha256
           sha256sum -c /tmp/signature.sha256
-          test "$(git diff --cached --name-only | wc -l)" = 15
+          test "$(git diff --cached --name-only | wc -l)" = 16
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Integrate exact verified Signature 2.2 Step 3D'
