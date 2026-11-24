@@ -11,6 +11,6 @@ function premiumEmployee(source){
  .replace('Interaktivna demonstracija','Nedeljni puls')
  .replace(', uz mogućnost dodatnog komentara','')
  .replace(/<footer class="footer">[\s\S]*?<\/footer>/,'<footer class="footer">Rukovodiocu se prikazuju samo grupni rezultati koji ispunjavaju prag privatnosti. Ne unosite lične podatke.</footer>')
- +'<script src="/employee.bundle.js"></script></body></html>';
+ +'<script src="/staging-config.js"></script><script src="/employee.bundle.js"></script></body></html>';
 }
 module.exports={premiumEmployee};

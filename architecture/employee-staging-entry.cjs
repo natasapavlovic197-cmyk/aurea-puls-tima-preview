@@ -10,7 +10,9 @@ const safe=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;
 function message(s){root.innerHTML='<div class="panel fade" role="status">'+safe(s)+'</div>'}
 async function start(){
  message('Učitavanje pitanja…');
- const client=createEmployeeClient({token});const questions=await client.load();
+ const cfg=globalThis.AUREA_STAGING_CONFIG;
+ const transport=cfg?.transport==='postgrest'?require('./postgrest-runtime/browser-transport.cjs').createPostgrestTransport(cfg):undefined;
+ const client=createEmployeeClient({token,fetchImpl:transport});const questions=await client.load();
  let step=0,busy=false;const answers=Object.create(null);
  function render(error=''){
  const q=questions[step];
