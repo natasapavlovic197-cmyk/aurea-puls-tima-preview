@@ -1,0 +1,25 @@
+# P2.4 — credential provisioning gate (2026-11-24)
+
+## Verified evidence (do not rerun)
+- P1 closure: d880265c4f293cab9566871a7bf5aa7e163dd6d7.
+- Netlify metadata run 45393867580: GET authorized, Pro plan, no target conflicts or flags returned, builds stopped. Exact integration branch not listed for branch deploys. Write entitlement and complete shared coverage unconfirmed.
+- TLS run https://github.com/natasapavlovic197-cmyk/aurea-puls-tima-preview/actions/runs/45395163902: DNS, TCP 5432, PostgreSQL SSLRequest, certificate chain/validity, hostname, TLS 1.3 all PASS. Public CA SHA256 807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa. No PostgreSQL startup or authentication; no project identity established by TLS alone.
+- Staging ref ublzmoroanhlcgpnxilw; pooler aws-1-eu-west-1.pooler.supabase.com:5432; database postgres; restricted login aurea_limiter_login.<project-ref>.
+- Prior read-only logging evidence: log_statement=ddl, log_min_error_statement=error, track_activities=on, pg_stat_statements.track_utility=on, password_encryption=scram-sha-256. Do not weaken logging.
+
+## Proposed synthetic redaction test — NOT authorized or executed
+1. Obtain separate approval for temporary staging role DDL, and an authenticated administrative psql session with verify-full TLS and trusted CA; never use the admin identity in runtime. Confirm target project via independent authenticated evidence. No credentials in chat, command arguments, SQL tool calls, git or logs.
+2. Use a unique non-existing disposable role (prefix aurea_redaction_probe_), NOLOGIN, NOINHERIT, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOBYPASSRLS, no grants or memberships. Use only a publicly known synthetic canary which is never a real credential. Prefer one transaction with BEGIN / CREATE ROLE / psql password mechanism / ROLLBACK. Confirm the role is absent after rollback; abort if unexpected name conflict. If transaction behavior is unsupported, stop rather than silently creating persistent roles.
+3. Test the exact eventual provisioning route and client, including the successful password-setting statement and a controlled error case (savepoint or separate rollback-only transaction). Never deliberately submit actual secrets. psql password processing can send a SCRAM verifier; that verifier is sensitive for real credentials.
+4. Inspect the bounded run window in Postgres logs, provider audit/request/error logs where accessible, and activity/statistics visibility. Return only counts/booleans, never raw log messages, password strings, or verifiers. Use nonsecret role marker and positive logging control to prove coverage; check both plaintext canary and any unredacted SCRAM material associated with the probe. Check ingestion completeness before declaring PASS. No matches without positive coverage is INCONCLUSIVE. Any exposure is FAIL. No global logging changes.
+5. A passed synthetic probe is evidence for that route only, not proof of all provider-side retention paths. Missing provider visibility requires documented review/support or an alternate supported route.
+
+## Real provisioning — separate approval required
+- Obtain Netlify owner/write entitlement evidence and verify exact site-specific Functions-only branch context support. No team-wide or production values; no enablement of branch deployments. Confirm no collisions immediately before write. Existing variables are never overwritten.
+- Verify no password configured on target restricted role (boolean only), role membership SET-only, activation flags absent/false; exclusive change window. Keep builds stopped. Confirm trusted CA fingerprint independently before real auth; observed fingerprint is not independently verified.
+- Generate independent 32-byte random DB password and HMAC secret in a reviewed trusted administrative process; never output them or persist plaintext in artifacts. Masking is supplemental only. Use reviewed psql password route after redaction gate; no plaintext SQL via management API. Match the same password to AUREA_STAGING_DATABASE_PASSWORD, independent HMAC to AUREA_LIMITER_SECRET. No actual adapter currently authorized. Admin authentication is an unresolved prerequisite.
+- Before Netlify secret write, verify TLS authenticated session identity as dedicated login; BEGIN, SET LOCAL ROLE aurea_rate_limiter, verify session_user/current_user, perform only rollback-only synthetic limiter operation and privilege denial checks; ROLLBACK. No real employee data.
+- Create only absent keys in exact branch Functions scope, marked secret. Verify metadata without printing values. On partial failure keep flags disabled; clear only newly set password and remove only provably owned created keys, otherwise stop and reconcile. No blind delete/overwrite. Provider conditional mutation support remains unverified.
+- P2.4 remains open pending redaction proof, write authority, reviewed live adapter and owner approval. Separate production environment and deployment approval remain later gates.
+
+No test executed, no password generated, no SQL or Netlify write, no deployment, no TinyFish by this record.
