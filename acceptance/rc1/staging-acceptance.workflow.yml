@@ -1,0 +1,30 @@
+# PROPOSAL ONLY. Install only after explicit approval. No push or schedule trigger.
+name: AUREA RC1 staging acceptance (auth only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aurea-rc1-staging-acceptance
+  cancel-in-progress: false
+jobs:
+  acceptance:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    environment: aurea-staging-admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Isolated local acceptance
+        working-directory: acceptance/rc1
+        run: node --test acceptance-auth.test.cjs architecture/a3-weekly-delivery-rehearsal.test.cjs
+      - name: Existing identities only, official Auth API
+        working-directory: acceptance/rc1
+        env:
+          AUREA_ACCEPTANCE_MODE: staging-auth-only
+          AUREA_SUPABASE_PUBLISHABLE_KEY: ${{ vars.AUREA_SUPABASE_PUBLISHABLE_KEY }}
+          AUREA_MANAGER_QA_PASSWORD: ${{ secrets.AUREA_MANAGER_QA_PASSWORD }}
+          AUREA_DELIVERY_AUTH_PASSWORD: ${{ secrets.AUREA_DELIVERY_AUTH_PASSWORD }}
+        run: node acceptance-auth.cjs

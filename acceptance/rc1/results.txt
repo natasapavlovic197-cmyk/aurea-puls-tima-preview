@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: reject missing approval mode, wrong branch, shared password
+ok 1 - reject missing approval mode, wrong branch, shared password
+  ---
+  duration_ms: 2.439216
+  type: 'test'
+  ...
+# Subtest: both identities with separate credentials and local logout
+ok 2 - both identities with separate credentials and local logout
+  ---
+  duration_ms: 37.309132
+  type: 'test'
+  ...
+# Subtest: failure still logs out acquired session
+ok 3 - failure still logs out acquired session
+  ---
+  duration_ms: 1.690624
+  type: 'test'
+  ...
+# Subtest: RC1 corrected links across complete isolated two-tenant cycle
+ok 4 - RC1 corrected links across complete isolated two-tenant cycle
+  ---
+  duration_ms: 23.321644
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 107.620754
