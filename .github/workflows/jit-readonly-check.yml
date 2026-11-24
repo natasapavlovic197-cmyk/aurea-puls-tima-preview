@@ -10,15 +10,47 @@ jobs:
   inspect:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 3
     environment: aurea-staging-admin
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with:
-          persist-credentials: false
-      - name: Offline guard tests
-        run: node --test architecture/edge-alternative/admin/jit-readonly.test.cjs
-      - name: Inspect existing authorization and JIT SSL metadata
+      - name: Inspect JIT configuration and mapping metadata only
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: node architecture/edge-alternative/admin/jit-readonly.cjs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const root='https://api.supabase.com/v1/projects/ublzmoroanhlcgpnxilw';
+          const token=process.env.SUPABASE_ACCESS_TOKEN;
+          const paths=['/jit-access','/database/jit','/database/jit/list'];
+          async function get(path){
+            if(!paths.includes(path))throw Error('path denied');
+            try{
+              const r=await fetch(root+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(15000)});
+              console.log(path+' HTTP '+r.status);
+              if(r.status!==200){await r.body?.cancel();return null;}
+              if(r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();return null;}
+              return await r.json();
+            }catch{return null;}
+          }
+          function summarize(items){
+            if(!Array.isArray(items)||items.some(x=>!x||typeof x.user_id!=='string'||!Array.isArray(x.user_roles)))return null;
+            const roles=items.flatMap(x=>x.user_roles);
+            if(roles.some(x=>!x||typeof x.role!=='string'))return null;
+            return {mappingRecords:items.length,roleMappings:roles.length,postgresMappings:roles.filter(x=>x.role==='postgres').length,limiterLoginMappings:roles.filter(x=>x.role==='aurea_limiter_login').length,employeeLoginMappings:roles.filter(x=>x.role==='aurea_employee_login').length,otherMappings:roles.filter(x=>!['postgres','aurea_limiter_login','aurea_employee_login'].includes(x.role)).length,expirySpecified:roles.filter(x=>typeof x.expires_at==='number'&&Number.isFinite(x.expires_at)).length,networkRestrictionSpecified:roles.filter(x=>['allowed_cidrs','allowed_cidrs_v6'].some(k=>Array.isArray(x.allowed_networks?.[k])&&x.allowed_networks[k].length>0)).length,branchesOnly:roles.filter(x=>x.branches_only===true).length};
+          }
+          (async()=>{
+            if(process.env.GITHUB_REF!=='refs/heads/integration/employee-ten-domains-step5'||process.env.GITHUB_REPOSITORY!=='natasapavlovic197-cmyk/aurea-puls-tima-preview'||!token?.startsWith('sbp_fc'))throw Error('guard');
+            const j=await get('/jit-access');
+            const state=['enabled','disabled','unavailable'].includes(j?.state)?j.state:'unconfirmed';
+            console.log(JSON.stringify({jitState:state,available:state==='enabled'||state==='disabled'?true:state==='unavailable'?false:'unconfirmed',applied:typeof j?.appliedSuccessfully==='boolean'?j.appliedSuccessfully:'unconfirmed',sslPrerequisiteReported:j?.unavailableReason==='ssl_enforcement_required'}));
+            const own=await get('/database/jit');
+            const ownSummary=summarize(own?[own]:null);
+            console.log(JSON.stringify({callerMapping:ownSummary??'unconfirmed'}));
+            const all=await get('/database/jit/list');
+            const allSummary=summarize(all?.items);
+            console.log(JSON.stringify({projectMappings:allSummary??'unconfirmed'}));
+            console.log('GET only. No user IDs, emails, IP addresses, tokens or raw response bodies logged. Mapping metadata is not proof of effective login.');
+            if(state==='unconfirmed'||!ownSummary||!allSummary)process.exitCode=1;
+          })().catch(()=>{console.error('BLOCKED: guard or unexpected schema; details suppressed');process.exitCode=1;});
+          NODE
