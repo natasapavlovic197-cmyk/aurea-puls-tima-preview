@@ -1,0 +1,25 @@
+name: AUREA isolated Edge backend QA
+on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths:
+      - 'architecture/edge-alternative/**'
+      - '.github/workflows/edge-alternative-qa.yml'
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          node architecture/edge-alternative/runtime.test.cjs
+          node architecture/psychometric-item-bank.test.cjs
+          node architecture/restricted-pg-query.test.cjs
+          node architecture/manager-runtime.test.cjs
+          node architecture/manager-privacy-threshold.test.cjs
+          node architecture/manager-workspace-endpoint.test.cjs
+          node architecture/employee-http-integration.test.cjs
