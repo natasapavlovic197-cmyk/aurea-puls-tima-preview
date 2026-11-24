@@ -1,0 +1,22 @@
+name: Signature personal insights isolated QA
+on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths: ['.github/workflows/signature-personal-qa.yml', 'architecture/employee-personal-*.cjs']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qa:
+    if: github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and isolated analytics tests
+        run: |
+          node --check architecture/employee-staging-entry.cjs
+          node --test architecture/employee-personal-insights.test.cjs
