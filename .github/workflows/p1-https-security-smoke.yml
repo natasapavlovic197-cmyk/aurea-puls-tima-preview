@@ -25,7 +25,20 @@ jobs:
             if (claims.role !== 'anon') throw Error('Non-anonymous key');
           }
           const id = '00000000-0000-0000-0000-000000000000';
+          const invalid = {p_action:'invitation',p_token:'invalid',p_answers:null};
+          let phase = 'initialization';
+          function safeCode(value) {
+            return typeof value === 'string' && /^(PGRST[0-9]{3}|[0-9A-Z]{5})$/.test(value) ? value : 'unreported';
+          }
+          function networkKind(error) {
+            const allowed = ['ENOTFOUND','EAI_AGAIN','ECONNREFUSED','ECONNRESET','ETIMEDOUT','UND_ERR_CONNECT_TIMEOUT','UND_ERR_SOCKET','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','SELF_SIGNED_CERT_IN_CHAIN'];
+            const code = error?.cause?.code;
+            if (allowed.includes(code)) return code;
+            if (error?.name === 'TimeoutError' || error?.name === 'AbortError') return error.name;
+            return 'unclassified';
+          }
           async function probe(name, path, kind, extra = {}, body) {
+            phase = name;
             const r = await fetch(base + '/rest/v1/' + path, {
               method: body === undefined ? 'GET' : 'POST',
               headers: {apikey: cfg.key, 'content-type': 'application/json', ...extra},
@@ -38,21 +51,31 @@ jobs:
               kind === 'schema' && r.status === 406 && code === 'PGRST106' ? 'PASS' :
               kind === 'rpc' && [401,403].includes(r.status) && code === '42501' ? 'PASS' :
               'UNCONFIRMED';
-            console.log(`${verdict} ${name}: HTTP ${r.status}`);
+            console.log(`${verdict} ${name}: HTTP ${r.status}; code=${safeCode(code)}`);
             if (verdict !== 'PASS') process.exitCode = 1;
           }
           (async () => {
-            const control = await fetch(base + '/rest/v1/', {headers:{apikey:cfg.key,'Accept-Profile':'public'},redirect:'error',signal:AbortSignal.timeout(12000)});
-            await control.body?.cancel();
-            if (!control.ok) throw Error('Public API control failed');
-            console.log('PASS public API control');
+            phase = 'positive control';
+            const control = await fetch(base + '/rest/v1/rpc/aurea_employee_pulse_v2', {
+              method:'POST',headers:{apikey:cfg.key,'content-type':'application/json','Content-Profile':'public'},
+              body:JSON.stringify(invalid),redirect:'error',signal:AbortSignal.timeout(12000)
+            });
+            let response;
+            try { response = await control.json(); } catch { response = null; }
+            console.log('CONTROL HTTP '+control.status+'; code='+safeCode(response?.code));
+            if (control.status !== 200 || !response || response.status !== 'unavailable' || Object.keys(response).length !== 1) {
+              console.error('UNCONFIRMED: positive control did not return the expected synthetic denial');
+              process.exitCode = 1;
+              return;
+            }
+            console.log('PASS public API control (invalid synthetic capability denied)');
             for (const schema of ['aurea_delivery_rpc','aurea_manager_rpc','aurea_private','aurea_rpc_private']) {
-              await probe(schema, '', 'schema', {'Accept-Profile':schema});
+              await probe(schema, 'rpc/aurea_employee_pulse_v2', 'schema', {'Content-Profile':schema}, invalid);
             }
             for (const name of ['aurea_manager_actions','aurea_manager_cycles','aurea_manager_summary','aurea_my_companies']) {
               await probe(name, 'rpc/'+name, 'rpc', {}, name === 'aurea_my_companies' ? {} : {p_organization_id:id});
             }
             await probe('legacy invitation','rpc/aurea_employee_invitation','rpc',{}, {p_hash:'0'.repeat(64)});
             console.log('NOT TESTED over HTTPS: mutating RPCs; verify effective SQL privileges separately.');
-          })().catch(() => { console.error('UNCONFIRMED: network or configuration failure'); process.exitCode = 1; });
+          })().catch(error => { console.error('UNCONFIRMED: '+phase+'; transport='+networkKind(error)); process.exitCode = 1; });
           NODE
