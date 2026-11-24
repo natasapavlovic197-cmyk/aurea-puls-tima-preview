@@ -1,0 +1,19 @@
+name: AUREA PostgREST live integration
+on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths:
+      - 'architecture/postgrest-runtime/**'
+      - '.github/workflows/postgrest-live-integration.yml'
+permissions:
+  contents: read
+jobs:
+  https:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: node architecture/postgrest-runtime/https-live-check.cjs

@@ -12,6 +12,10 @@ async function main(){
  await esbuild.build({entryPoints:[path.join(__dirname,'staging-manager-entry.cjs')],bundle:true,platform:'browser',format:'iife',outfile:path.join(out,'manager-login.bundle.js'),minify:true});
  fs.writeFileSync(path.join(out,'employee.html'),premiumEmployee(fs.readFileSync(path.join(__dirname,'employee-six-question-preview.html'),'utf8')));
  await esbuild.build({entryPoints:[path.join(__dirname,'employee-staging-entry.cjs')],bundle:true,platform:'browser',format:'iife',outfile:path.join(out,'employee.bundle.js'),minify:true});
+ if(process.env.AUREA_POSTGREST_STAGING_BUILD==='true'){
+ const cfg=require('./postgrest-runtime/staging-public-config.cjs');
+ fs.writeFileSync(path.join(out,'staging-config.js'),'globalThis.AUREA_STAGING_CONFIG=Object.freeze('+JSON.stringify(cfg)+');\n');
+ }
  for(const file of ['index.html','manager-login.css','manager-login.bundle.js','employee.html','employee.bundle.js'])if(!fs.statSync(path.join(out,file)).size)throw Error('Empty artifact');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
