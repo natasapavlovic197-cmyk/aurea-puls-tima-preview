@@ -32,6 +32,8 @@ const {append,seal}=require('./employee-personal-history.cjs');
  assert.equal(await radar.locator('circle').count(),5);
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.screenshot({path:'artifacts/signature-personal/radar-'+width+'.png',fullPage:true,animations:'disabled'});
+ await page.locator('#personal-settings summary').click();
+ assert.equal(await page.locator('#personal-settings').getAttribute('open'),'');
  await page.locator('#personal-archive').setInputFiles({name:'synthetic.aurea',mimeType:'application/json',buffer:Buffer.from(archive)});
  await page.locator('#personal-pass').fill(pass);
  await page.locator('#personal-load').click();
