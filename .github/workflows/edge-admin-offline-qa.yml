@@ -16,3 +16,4 @@ jobs:
         with:
           persist-credentials: false
       - run: node architecture/edge-alternative/admin/offline.test.cjs
+      - run: node architecture/edge-alternative/admin/management-api.test.cjs
