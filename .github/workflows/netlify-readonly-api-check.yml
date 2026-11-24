@@ -1,67 +1,41 @@
-name: AUREA JIT read-only check
+name: AUREA P2.4 administrative login read-only
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: aurea-jit-readonly-check
+  group: aurea-staging-admin-login
   cancel-in-progress: false
 jobs:
   inspect:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 4
     environment: aurea-staging-admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
     steps:
-      - name: Read JIT configuration and mapping metadata only
+      - name: Verify public CA and read-only administrative session
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PGPASSWORD: ${{ secrets.SUPABASE_ADMIN_DB_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const root='https://api.supabase.com/v1/projects/ublzmoroanhlcgpnxilw/database';
-          const known=new Set(['postgres','aurea_limiter_login','aurea_employee_login','aurea_rate_limiter']);
-          const allowed=new Set(['/jit-access','/jit','/jit/list']);
-          async function get(path){
-            if(!allowed.has(path))throw Error('path');
-            try{
-              const r=await fetch(root+path,{method:'GET',redirect:'error',signal:AbortSignal.timeout(20000),headers:{Authorization:'Bearer '+process.env.SUPABASE_ACCESS_TOKEN,Accept:'application/json'}});
-              console.log(path+' HTTP '+r.status);
-              if(r.status!==200){await r.body?.cancel();return null;}
-              if(r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();return null;}
-              return await r.json();
-            }catch{console.log(path+' unavailable; details suppressed');return null;}
-          }
-          function summarize(rows){
-            if(!Array.isArray(rows)||rows.some(x=>!x||typeof x.role!=='string'))return null;
-            const counts=Object.fromEntries([...known].map(x=>[x,0]));
-            let other=0, expired=0, futureExpiry=0, noExpiry=0, unknownExpiry=0, networkRestricted=0, networkUnknown=0, branchesOnly=0, branchUnknown=0;
-            for(const r of rows){
-              if(known.has(r.role))counts[r.role]++;else other++;
-              if(r.expires_at===null)noExpiry++;
-              else if(typeof r.expires_at==='number'&&Number.isFinite(r.expires_at)&&r.expires_at>1e12){if(r.expires_at<=Date.now())expired++;else futureExpiry++;}
-              else unknownExpiry++;
-              const n=r.allowed_networks;
-              if(n&&Array.isArray(n.allowed_cidrs)&&Array.isArray(n.allowed_cidrs_v6)){if(n.allowed_cidrs.length+n.allowed_cidrs_v6.length>0)networkRestricted++;}
-              else networkUnknown++;
-              if(r.branches_only===true)branchesOnly++;else if(r.branches_only!==false)branchUnknown++;
-            }
-            return {total:rows.length,knownRoleCounts:counts,otherRoleCount:other,expired,futureExpiry,noExpiry,unknownExpiry,networkRestricted,networkUnknown,branchesOnly,branchUnknown};
-          }
-          (async()=>{
-            if(process.env.GITHUB_REPOSITORY!=='natasapavlovic197-cmyk/aurea-puls-tima-preview'||process.env.GITHUB_REF!=='refs/heads/integration/employee-ten-domains-step5'||!process.env.SUPABASE_ACCESS_TOKEN?.startsWith('sbp_fc'))throw Error('guard');
-            const c=await get('/jit-access');
-            const state=['enabled','disabled','unavailable'].includes(c?.state)?c.state:'unconfirmed';
-            console.log(JSON.stringify({state,applied:typeof c?.appliedSuccessfully==='boolean'?c.appliedSuccessfully:'unconfirmed',availability:state==='enabled'||state==='disabled'?'reported_available':state==='unavailable'?'reported_unavailable':'unconfirmed',reason:c?.unavailableReason==='ssl_enforcement_required'?'ssl_enforcement_required':'unconfirmed'}));
-            const self=await get('/jit');
-            const own=summarize(self?.user_roles);
-            console.log(JSON.stringify({callerMappings:own??'unconfirmed'}));
-            const all=await get('/jit/list');
-            const valid=Array.isArray(all?.items)&&all.items.every(x=>x&&Array.isArray(x.user_roles));
-            const summary=valid?summarize(all.items.flatMap(x=>x.user_roles)):null;
-            console.log(JSON.stringify({projectMappings:summary??'unconfirmed',mappingRecordCount:summary?all.items.length:'unconfirmed'}));
-            if(state==='unconfirmed'||!own||!summary){console.log('PARTIAL: one or more GET results unconfirmed; do not request broader privileges automatically');process.exitCode=1;}
-            console.log('GET only. No emails, user IDs, CIDRs, tokens or raw response bodies printed. No JIT changes, SQL or deployment.');
-          })().catch(()=>{console.error('BLOCKED: guard or unexpected failure');process.exitCode=1;});
-          NODE
+          umask 077
+          test "$GITHUB_REPOSITORY" = 'natasapavlovic197-cmyk/aurea-puls-tima-preview'
+          test "$GITHUB_REF" = 'refs/heads/integration/employee-ten-domains-step5'
+          if [ -z "${PGPASSWORD:-}" ]; then echo 'BLOCKED: admin secret absent'; exit 1; fi
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"; unset PGPASSWORD' EXIT
+          curl --fail --silent --show-error --proto '=https' --max-time 20 'https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt' -o "$work/ca.crt"
+          fingerprint="$(openssl x509 -in "$work/ca.crt" -outform DER | sha256sum | cut -d ' ' -f 1)"
+          if [ "$fingerprint" != '807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa' ]; then echo 'BLOCKED: CA differs from verified TLS evidence'; exit 1; fi
+          command -v psql >/dev/null || { echo 'BLOCKED: psql unavailable'; exit 1; }
+          export PGHOST=aws-1-eu-west-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGUSER=postgres.ublzmoroanhlcgpnxilw PGSSLMODE=verify-full PGSSLROOTCERT="$work/ca.crt" PGCONNECT_TIMEOUT=12 PGAPPNAME=aurea_admin_readonly_preflight
+          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000'
+          if ! psql -X -w -qAt -v ON_ERROR_STOP=1 -c "SELECT (session_user='postgres' AND current_user='postgres' AND current_database()='postgres' AND current_setting('transaction_read_only')='on' AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolcreaterole))::text" >"$work/result" 2>"$work/error"; then
+            echo 'BLOCKED: verified administrative connection or read-only query failed; raw diagnostics suppressed'
+            exit 1
+          fi
+          if [ "$(cat "$work/result")" != 'true' ]; then echo 'BLOCKED: identity, privilege or read-only guard failed'; exit 1; fi
+          echo 'PASS: authenticated postgres session through expected staging pooler with verify-full and read-only guard'
+          echo 'PASS: administrative role identity and CREATEROLE confirmed'
+          echo 'NO WRITES: no role changes, password-setting SQL, Netlify changes or deployment'
