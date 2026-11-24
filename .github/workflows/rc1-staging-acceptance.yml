@@ -1,7 +1,12 @@
-# PROPOSAL ONLY. Install only after explicit approval. No push or schedule trigger.
+# Isolated staging acceptance; no deployment or schedule.
 name: AUREA RC1 staging acceptance (auth only)
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - integration/employee-ten-domains-step5
+    paths:
+      - '.github/workflows/rc1-staging-acceptance.yml'
 permissions:
   contents: read
 concurrency:
