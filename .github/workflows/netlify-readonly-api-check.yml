@@ -31,11 +31,18 @@ jobs:
           command -v psql >/dev/null || { echo 'BLOCKED: psql unavailable'; exit 1; }
           export PGHOST=aws-1-eu-west-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGUSER=postgres.ublzmoroanhlcgpnxilw PGSSLMODE=verify-full PGSSLROOTCERT="$work/ca.crt" PGCONNECT_TIMEOUT=12 PGAPPNAME=aurea_admin_readonly_preflight
           export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000'
-          if ! psql -X -w -qAt -v ON_ERROR_STOP=1 -c "SELECT (session_user='postgres' AND current_user='postgres' AND current_database()='postgres' AND current_setting('transaction_read_only')='on' AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolcreaterole))::text" >"$work/result" 2>"$work/error"; then
+          if ! psql -X -w -qAt -v ON_ERROR_STOP=1 -c "BEGIN READ ONLY; SELECT (session_user='postgres')::text, (current_user='postgres')::text, (current_database()='postgres')::text, (current_setting('default_transaction_read_only')='on')::text, (current_setting('transaction_read_only')='on')::text, EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolcreaterole)::text; ROLLBACK;" >"$work/result" 2>"$work/error"; then
             echo 'BLOCKED: verified administrative connection or read-only query failed; raw diagnostics suppressed'
             exit 1
           fi
-          if [ "$(cat "$work/result")" != 'true' ]; then echo 'BLOCKED: identity, privilege or read-only guard failed'; exit 1; fi
+          IFS='|' read -r session_ok current_ok db_ok default_ro tx_ro role_ok extra < "$work/result"
+          for value in "$session_ok" "$current_ok" "$db_ok" "$default_ro" "$tx_ro" "$role_ok"; do
+            case "$value" in true|false) ;; *) echo 'BLOCKED: unexpected diagnostic format'; exit 1;; esac
+          done
+          test -z "$extra" || { echo 'BLOCKED: unexpected extra field'; exit 1; }
+          printf 'session identity: %s\\ncurrent identity: %s\\ndatabase identity: %s\\nstartup read-only: %s\\nexplicit transaction read-only: %s\\nCREATEROLE: %s\\n' "$session_ok" "$current_ok" "$db_ok" "$default_ro" "$tx_ro" "$role_ok"
+          if [ "$session_ok:$current_ok:$db_ok:$tx_ro:$role_ok" != 'true:true:true:true:true' ]; then echo 'BLOCKED: required control failed'; exit 1; fi
+          if [ "$default_ro" != true ]; then echo 'NOTICE: startup read-only option not effective; explicit read-only transaction required'; fi
           echo 'PASS: authenticated postgres session through expected staging pooler with verify-full and read-only guard'
           echo 'PASS: administrative role identity and CREATEROLE confirmed'
           echo 'NO WRITES: no role changes, password-setting SQL, Netlify changes or deployment'
