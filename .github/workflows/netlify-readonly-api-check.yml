@@ -39,12 +39,13 @@ jobs:
           let phase='guard',id=null,attempted=false;
           const check=(ok,label)=>{if(!ok)throw Error('blocked');console.log('PASS '+label)};
           const safeId=x=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,128}$/.test(x);
-          async function api(method,path,body,type='application/json'){
+          async function api(method,path,body,type='application/json',paged=false){
             const r=await fetch('https://api.netlify.com/api/v1'+path,{method,headers:{authorization:'Bearer '+process.env.NETLIFY_AUTH_TOKEN,accept:'application/json',...(body!==undefined?{'content-type':type}:{})},...(body===undefined?{}:{body:type==='application/json'?JSON.stringify(body):body}),redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(method==='POST'?120000:25000)});
-            if(!r.ok){await r.body?.cancel();throw Error('HTTP failure')}
-            if(method==='GET'&&r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('incomplete inventory')}
+            if(!r.ok){await r.body?.cancel();throw Error('HTTP '+r.status)}
+            if(!paged&&method==='GET'&&r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('incomplete inventory')}
             if(method==='PUT'){await r.body?.cancel();return null;}
-            return r.json();
+            const data=await r.json();
+            return paged?{data,link:r.headers.get('link')||''}:data;
           }
           async function anchor(){
             const s=await api('GET','/sites/'+SITE),b=s.build_settings||{};
@@ -95,8 +96,27 @@ jobs:
             if(process.env.GITHUB_RUN_ATTEMPT!=='1')throw Error('rerun prohibited');
             const old=await api('GET','/sites/'+SITE+'/deploys/'+OLD);
             check(old.id===OLD&&old.site_id===SITE&&old.context==='deploy-preview'&&!old.published_at,'old draft untouched');
-            const inventory=await api('GET','/sites/'+SITE+'/deploys?per_page=100');
-            check(Array.isArray(inventory)&&!inventory.some(x=>x.title===TITLE),'no prior ZIP draft with this title');
+            phase='ZIP history pagination';
+            const seen=new Set();
+            let complete=false, pages=0;
+            for(let page=1;page<=100;page++){
+              const {data,link}=await api('GET','/sites/'+SITE+'/deploys?per_page=100&page='+page,undefined,'application/json',true);
+              if(!Array.isArray(data)||data.length>100)throw Error('invalid history shape');
+              for(const row of data){
+                if(!safeId(row?.id)||seen.has(row.id))throw Error('history duplicate or invalid ID');
+                seen.add(row.id);
+                if(row.title===TITLE)throw Error('prior ZIP title found');
+              }
+              pages++;
+              const next=/(?:^|,)\s*<([^>]+)>\s*;\s*rel="?next"?/i.exec(link);
+              if(!next&&data.length<100){complete=true;break;}
+              if(next){
+                const u=new URL(next[1]);
+                if(u.origin!=='https://api.netlify.com'||u.pathname!=='/api/v1/sites/'+SITE+'/deploys'||u.searchParams.get('page')!==String(page+1))throw Error('unexpected pagination');
+              }else if(link.includes('rel="next"'))throw Error('unparsed pagination');
+            }
+            check(complete,'complete ZIP history: '+pages+' pages, '+seen.size+' deploys; no prior ZIP title');
+            phase='one ZIP draft POST';
             await anchor();
             attempted=true;
             const d=await api('POST','/sites/'+SITE+'/deploys?draft=true&production=false&title='+encodeURIComponent(TITLE),fs.readFileSync(zipPath),'application/zip');
