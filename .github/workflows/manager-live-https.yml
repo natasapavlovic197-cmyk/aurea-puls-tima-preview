@@ -1,0 +1,26 @@
+name: AUREA authenticated manager HTTPS
+on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths:
+      - 'architecture/live-manager-https-e2e.cjs'
+      - '.github/workflows/manager-live-https.yml'
+permissions:
+  contents: read
+concurrency:
+  group: aurea-manager-https-e2e
+  cancel-in-progress: false
+jobs:
+  manager:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: aurea-staging-admin
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Real authenticated manager test
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node architecture/live-manager-https-e2e.cjs
