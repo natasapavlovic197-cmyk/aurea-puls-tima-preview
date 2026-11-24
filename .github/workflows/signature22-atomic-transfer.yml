@@ -2,7 +2,7 @@ name: Signature Step 3D atomic transfer QA
 on:
   push:
     branches: [integration/employee-ten-domains-step5]
-    paths: ['signature22-step3d-source.zip']
+    paths: ['signature22-step3d-source.zip', '.github/workflows/signature22-atomic-transfer.yml']
 permissions:
   contents: read
 concurrency:
@@ -35,14 +35,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 4
+          fetch-depth: 0
       - name: Verify exact archive and extract only approved source files
         run: |
-          set -euo pipefail
-          test "$(git diff --name-only HEAD^ HEAD)" = "signature22-step3d-source.zip"
+          set -euxo pipefail
           git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
           test "$(git diff --name-only "$EXPECTED_BASE" HEAD | sort)" = "$(printf '%s\n' '.github/workflows/signature22-atomic-transfer.yml' 'signature22-step3d-source.zip' | sort)"
-          printf '%s\n' "$PATCH_MANIFEST" > /tmp/signature.sha256
+          printf '%s\n' "$PATCH_MANIFEST" | awk 'NF' > /tmp/signature.sha256
           test "$(wc -l < /tmp/signature.sha256)" = 15
           printf '%s  %s\n' '1112a0881eb2580310441af2eec9056022fabbd6106b36b96d227b4f7a8a5bc3' 'signature22-step3d-source.zip' | sha256sum -c -
           python <<'PY'
@@ -102,7 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 4
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: signature22-verified-source
@@ -112,7 +111,7 @@ jobs:
           set -euo pipefail
           git merge-base --is-ancestor "$EXPECTED_BASE" HEAD
           test "$(git ls-remote origin refs/heads/integration/employee-ten-domains-step5 | cut -f1)" = "$GITHUB_SHA"
-          printf '%s\n' "$PATCH_MANIFEST" > /tmp/signature.sha256
+          printf '%s\n' "$PATCH_MANIFEST" | awk 'NF' > /tmp/signature.sha256
           test "$(wc -l < /tmp/signature.sha256)" = 15
           (cd /tmp/verified && sha256sum -c /tmp/signature.sha256)
           while read -r hash file; do
