@@ -1,72 +1,99 @@
-name: AUREA P2.4 pooler TLS preflight (no credentials)
+name: AUREA P2.4 synthetic Netlify write preflight
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: aurea-staging-tls-preflight
+  group: aurea-netlify-readonly-api-check
   cancel-in-progress: false
 jobs:
-  tls:
+  canary:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
+    environment: aurea-staging-admin
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
-      - name: DNS TCP PostgreSQL SSLRequest and verified TLS
+      - name: Create verify and remove one public synthetic variable
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ vars.NETLIFY_SITE_ID }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import socket, ssl, struct, sys, os, urllib.request, hashlib
-          HOST = "aws-1-eu-west-1.pooler.supabase.com"
-          PORT = 5432
-          phase = "guard"
-          try:
-              if os.environ.get("GITHUB_REF") != "refs/heads/integration/employee-ten-domains-step5" or os.environ.get("GITHUB_REPOSITORY") != "natasapavlovic197-cmyk/aurea-puls-tima-preview":
-                  raise RuntimeError("guard")
-              phase = "public CA download"
-              url = "https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt"
-              with urllib.request.urlopen(url, timeout=15) as response:
-                  if response.geturl() != url:
-                      raise RuntimeError("unexpected CA redirect")
-                  data = response.read(16385)
-              if len(data)>16384 or data.count(b"-----BEGIN CERTIFICATE-----")!=1 or b"PRIVATE KEY" in data:
-                  raise RuntimeError("unexpected CA format")
-              pem = data.decode("ascii")
-              der = ssl.PEM_cert_to_DER_cert(pem)
-              print("Public CA SHA256: " + hashlib.sha256(der).hexdigest(), flush=True)
-              phase = "DNS"
-              records = socket.getaddrinfo(HOST, PORT, type=socket.SOCK_STREAM)
-              if not records:
-                  raise RuntimeError("no records")
-              print("PASS DNS: resolved", flush=True)
-              phase = "TCP"
-              with socket.create_connection((HOST, PORT), timeout=12) as sock:
-                  sock.settimeout(12)
-                  print("PASS TCP: port 5432", flush=True)
-                  phase = "PostgreSQL SSLRequest"
-                  sock.sendall(struct.pack("!II", 8, 80877103))
-                  if sock.recv(1) != b"S":
-                      raise RuntimeError("SSL not accepted")
-                  print("PASS PostgreSQL SSLRequest: accepted", flush=True)
-                  phase = "TLS certificate and hostname"
-                  ctx = ssl.create_default_context(cadata=pem)
-                  ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-                  assert ctx.check_hostname and ctx.verify_mode == ssl.CERT_REQUIRED
-                  with ctx.wrap_socket(sock, server_hostname=HOST) as tls:
-                      cert = tls.getpeercert()
-                      if not cert or not cert.get("notAfter"):
-                          raise RuntimeError("certificate missing")
-                      if ssl.cert_time_to_seconds(cert["notAfter"]) <= __import__("time").time():
-                          raise RuntimeError("expired")
-                      print("PASS certificate trust chain and validity", flush=True)
-                      print("PASS hostname verification", flush=True)
-                      print("PASS TLS protocol: " + tls.version(), flush=True)
-              print("NO AUTH: no PostgreSQL startup message, credentials, SQL, or deployment. Pooler endpoint only; project and login identity not verified.")
-          except ssl.SSLCertVerificationError as e:
-              print("FAIL " + phase + ": verify_code=" + str(e.verify_code) + "; " + e.verify_message, file=sys.stderr)
-              sys.exit(1)
-          except Exception as e:
-              print("FAIL " + phase + ": " + type(e).__name__, file=sys.stderr)
-              sys.exit(1)
-          PY
+          node <<'NODE'
+          const {randomBytes}=require('node:crypto');
+          const SITE='91ffeb5a-796e-4b2a-9fde-517c7e42f708';
+          const BRANCH='integration/employee-ten-domains-step5';
+          const key='AUREA_SYNTHETIC_WRITE_PROBE_'+process.env.GITHUB_RUN_ID+'_'+randomBytes(12).toString('hex').toUpperCase();
+          const value='PUBLIC_SYNTHETIC_ONLY_'+randomBytes(16).toString('hex');
+          const flags=['AUREA_B2B_MANAGER_ENABLED','AUREA_B2B_MANAGER_DEPLOY_APPROVED'];
+          let phase='guard', attempted=false, created=false, valueId=null, verified=false, base, item;
+          function requireCheck(ok,label){if(!ok)throw Error(label);console.log('PASS '+label);}
+          async function request(method,path,body){
+            const r=await fetch('https://api.netlify.com/api/v1'+path,{
+              method,redirect:'error',headers:{Authorization:'Bearer '+process.env.NETLIFY_AUTH_TOKEN,Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},
+              ...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});
+            console.log(method+' '+phase+' HTTP '+r.status);
+            if(r.headers.get('link')?.includes('rel="next"')){await r.body?.cancel();throw Error('pagination');}
+            if(r.status===200||r.status===201)return {status:r.status,data:await r.json()};
+            await r.body?.cancel();return {status:r.status};
+          }
+          async function inventory(path){
+            const r=await request('GET',path);
+            if(r.status!==200||!Array.isArray(r.data)||r.data.some(x=>!x||typeof x.key!=='string'))throw Error('inventory unavailable');
+            return r.data;
+          }
+          function owned(x){
+            return x?.key===key&&x.is_secret===false&&Array.isArray(x.scopes)&&x.scopes.length===1&&x.scopes[0]==='functions'&&Array.isArray(x.values)&&x.values.length===1&&x.values[0].context==='branch'&&x.values[0].context_parameter===BRANCH&&x.values[0].value===value&&typeof x.values[0].id==='string'&&x.values[0].id.length>0;
+          }
+          (async()=>{
+            try{
+              requireCheck(process.env.GITHUB_REF==='refs/heads/'+BRANCH&&process.env.GITHUB_REPOSITORY==='natasapavlovic197-cmyk/aurea-puls-tima-preview'&&process.env.NETLIFY_SITE_ID===SITE&&!!process.env.NETLIFY_AUTH_TOKEN,'execution guard');
+              phase='site safety guard';
+              const s=await request('GET','/sites/'+SITE);
+              const site=s.data;
+              requireCheck(s.status===200&&site?.id===SITE&&site.name==='aurea-puls-tima-preview'&&(site.build_settings?.stop_builds??site.stop_builds)===true&&site.build_settings?.repo_branch==='main'&&typeof site.account_id==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(site.account_id),'expected site and stopped builds');
+              base='/accounts/'+encodeURIComponent(site.account_id)+'/env';
+              item=base+'/'+encodeURIComponent(key)+'?site_id='+SITE;
+              phase='collision safety guard';
+              const local=await inventory(base+'?site_id='+SITE);
+              const shared=await inventory(base);
+              requireCheck(![...local,...shared].some(x=>x.key===key||flags.includes(x.key)),'unique key and absent activation flags');
+              requireCheck((await request('GET',item)).status===404,'exact key absent');
+              console.log('Synthetic cleanup key: '+key);
+              phase='create synthetic site variable';
+              attempted=true;
+              const c=await request('POST',base+'?site_id='+SITE,[{key,scopes:['functions'],is_secret:false,values:[{context:'branch',context_parameter:BRANCH,value}]}]);
+              created=c.status===201;
+              requireCheck(created,'create entitlement');
+              phase='verify exact metadata';
+              const v=await request('GET',item);
+              requireCheck(v.status===200&&owned(v.data),'single Functions-only exact branch public value');
+              valueId=v.data.values[0].id;
+              phase='verify no shared key';
+              requireCheck(!(await inventory(base)).some(x=>x.key===key),'no team-level key');
+              verified=true;
+            }catch(e){console.error('BLOCKED '+phase+'; details suppressed');process.exitCode=1;}
+            finally{
+              if(attempted){
+                try{
+                  phase='cleanup ownership check';
+                  const r=await request('GET',item);
+                  if(r.status===404){
+                    console.log('PASS synthetic key absent');
+                    if(created)process.exitCode=1;
+                  }else{
+                    requireCheck(r.status===200&&owned(r.data)&&(!valueId||r.data.values[0].id===valueId),'exact ownership before deletion');
+                    // No provider atomic compare-and-delete guarantee: do not run alongside manual edits.
+                    phase='delete owned synthetic key';
+                    requireCheck((await request('DELETE',item)).status===204,'delete entitlement');
+                    phase='verify cleanup';
+                    requireCheck((await request('GET',item)).status===404,'site key removed');
+                    requireCheck(!(await inventory(base)).some(x=>x.key===key),'team key absent');
+                  }
+                }catch(e){console.error('CLEANUP UNCONFIRMED: inspect only synthetic key '+key+'; do not blindly delete');process.exitCode=1;}
+              }
+            }
+            if(verified&&!process.exitCode)console.log('PASS synthetic write, exact branch metadata and cleanup; no real secrets or deploys. Runtime isolation and atomic rollback not proven.');
+          })().catch(()=>{console.error('BLOCKED unexpected failure');process.exitCode=1;});
+          NODE
