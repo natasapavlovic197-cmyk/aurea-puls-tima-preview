@@ -48,7 +48,7 @@ BEGIN
  SELECT c.organization_id,w,a FROM aurea_private.cycles c
  WHERE c.week_start=w AND c.model_version=2 AND aurea_delivery_rpc.allowed_org(c.organization_id)
  AND ((a='report' AND c.state='closed') OR (a IN ('invite','reminder') AND c.state='open'))
- ON CONFLICT (organization_id,week_start,action) DO NOTHING;
+ ON CONFLICT DO NOTHING;
  GET DIAGNOSTICS n=ROW_COUNT;
  SELECT count(*)::integer INTO missing FROM aurea_delivery_rpc.scopes s
  WHERE s.user_id=auth.uid() AND NOT EXISTS(SELECT 1 FROM aurea_private.cycles c WHERE c.organization_id=s.organization_id AND c.week_start=w AND c.model_version=2 AND ((a='report' AND c.state='closed') OR (a IN ('invite','reminder') AND c.state='open')));
