@@ -31,3 +31,28 @@ test('revocation failure is not reported as success',async()=>{
  const f=fixture();f.auth.signOut=async()=>{throw Error('private diagnostic')};
  const s=createDeliverySession({...f,identityId:id});await s.readToken();await assert.rejects(s.close(),/revocation unconfirmed/);await assert.rejects(s.readToken());
 });
+
+test('close during refresh revokes rotated token once and rejects waiting readers',async()=>{
+ const f=fixture(),s=createDeliverySession({...f,identityId:id});
+ await s.readToken();f.advance();
+ let release;const gate=new Promise(r=>{release=r});const revoked=[];
+ f.auth.refresh=async()=>{await gate;return {accessToken:'fake.rotated.token',refreshToken:'synthetic-two',expiresAt:f.clock()+120000,userId:id}};
+ f.auth.signOut=async t=>{revoked.push(t)};
+ const read=s.readToken();const rejection=assert.rejects(read,/session disabled/);
+ const first=s.close(),second=s.close();assert.equal(first,second);
+ release();await rejection;await Promise.all([first,second]);
+ assert.deepEqual(revoked,['fake.rotated.token']);await assert.rejects(s.readToken(),/closed/);
+});
+test('close during initial authentication revokes newly issued verified token',async()=>{
+ const f=fixture();let release;const gate=new Promise(r=>{release=r});const revoked=[];
+ const original=f.auth.signIn;f.auth.signIn=async()=>{await gate;return original()};
+ f.auth.signOut=async t=>{revoked.push(t)};
+ const s=createDeliverySession({...f,identityId:id});const read=s.readToken();const rejection=assert.rejects(read,/session disabled/);
+ const closing=s.close();release();await rejection;await closing;
+ assert.deepEqual(revoked,['fake.initial.token']);
+});
+test('parallel close callers share revocation failure',async()=>{
+ const f=fixture();let calls=0;f.auth.signOut=async()=>{calls++;throw Error('private')};
+ const s=createDeliverySession({...f,identityId:id});await s.readToken();
+ const a=s.close(),b=s.close();assert.equal(a,b);await Promise.all([assert.rejects(a,/revocation unconfirmed/),assert.rejects(b,/revocation unconfirmed/)]);assert.equal(calls,1);
+});
