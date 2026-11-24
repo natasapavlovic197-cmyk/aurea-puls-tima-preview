@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const {createHandler}=require('../netlify/functions/aurea-manager-summary.cjs');
-const env={AUREA_B2B_MANAGER_ENABLED:'true',AUREA_B2B_MANAGER_DEPLOY_APPROVED:'true',AUREA_STAGING_DATABASE_HOST:'db.example.supabase.com',AUREA_STAGING_DATABASE_NAME:'postgres',AUREA_STAGING_DATABASE_USER:'postgres',AUREA_STAGING_DATABASE_PASSWORD:'secret'.repeat(8),AUREA_LIMITER_SECRET:'x'.repeat(64),AUREA_SUPABASE_URL:'https://example.supabase.co',AUREA_SUPABASE_PUBLISHABLE_KEY:'test'};
+const env={AUREA_B2B_MANAGER_ENABLED:'true',AUREA_B2B_MANAGER_DEPLOY_APPROVED:'true',AUREA_STAGING_DATABASE_HOST:'aws-9-eu-west-1.pooler.supabase.com',AUREA_STAGING_DATABASE_NAME:'postgres',AUREA_STAGING_DATABASE_USER:'postgres',AUREA_STAGING_DATABASE_PASSWORD:'secret'.repeat(8),AUREA_LIMITER_SECRET:'x'.repeat(64),AUREA_SUPABASE_URL:'https://ublzmoroanhlcgpnxilw.supabase.co',AUREA_SUPABASE_PUBLISHABLE_KEY:'test'};
 const event={httpMethod:'GET',queryStringParameters:{organization_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},requestContext:{identity:{sourceIp:'192.0.2.7'}},headers:{authorization:'Bearer a.b.c'}};
 (async()=>{
  let poolCreated=0,networkCalls=0;
