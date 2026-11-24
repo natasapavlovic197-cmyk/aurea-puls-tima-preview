@@ -56,3 +56,17 @@ test('parallel close callers share revocation failure',async()=>{
  const s=createDeliverySession({...f,identityId:id});await s.readToken();
  const a=s.close(),b=s.close();assert.equal(a,b);await Promise.all([assert.rejects(a,/revocation unconfirmed/),assert.rejects(b,/revocation unconfirmed/)]);assert.equal(calls,1);
 });
+
+test('failed getUser retains issued bearer for explicit close',async()=>{
+ const f=fixture(),revoked=[];f.auth.getUser=async()=>{throw Error('private diagnostic')};f.auth.signOut=async t=>revoked.push(t);
+ const s=createDeliverySession({...f,identityId:id});await assert.rejects(s.readToken(),/session disabled/);await s.close();assert.deepEqual(revoked,['fake.initial.token']);
+});
+test('failed refresh identity verification revokes rotated bearer',async()=>{
+ const f=fixture(),revoked=[];f.auth.signOut=async t=>revoked.push(t);
+ const s=createDeliverySession({...f,identityId:id});await s.readToken();f.advance();f.auth.getUser=async()=>({id:'other'});
+ await assert.rejects(s.readToken(),/session disabled/);await s.close();assert.deepEqual(revoked,['fake.rotated.token']);
+});
+test('cached token cannot escape concurrent close',async()=>{
+ const f=fixture(),s=createDeliverySession({...f,identityId:id});await s.readToken();
+ const read=s.readToken(),rejection=assert.rejects(read,/session disabled/);await s.close();await rejection;assert.deepEqual(f.counts(),[1,0,1]);
+});
