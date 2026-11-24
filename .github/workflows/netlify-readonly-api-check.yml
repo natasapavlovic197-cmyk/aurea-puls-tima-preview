@@ -13,6 +13,23 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     steps:
+      - name: API Keys permission probe (status only)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          (async()=>{
+            if(process.env.GITHUB_REPOSITORY!=='natasapavlovic197-cmyk/aurea-puls-tima-preview'||process.env.GITHUB_REF!=='refs/heads/integration/employee-ten-domains-step5'||!process.env.SUPABASE_ACCESS_TOKEN)throw Error('guard');
+            const response=await fetch('https://api.supabase.com/v1/projects/ublzmoroanhlcgpnxilw/api-keys?reveal=false',{method:'GET',headers:{authorization:'Bearer '+process.env.SUPABASE_ACCESS_TOKEN,accept:'application/json'},redirect:'error',cache:'no-store',credentials:'omit',signal:AbortSignal.timeout(15000)});
+            const status=response.status;
+            // Discard the response stream; never parse, persist or print key material.
+            if(response.body)await response.body.cancel();
+            console.log('HTTP '+status);
+            if(status!==200)process.exitCode=1;
+          })().catch(()=>{console.error('HTTP status unavailable');process.exitCode=1});
+          NODE
       - name: Verify staging boundaries and absence of conflicts
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
