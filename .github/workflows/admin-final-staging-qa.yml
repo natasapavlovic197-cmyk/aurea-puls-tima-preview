@@ -1,0 +1,33 @@
+name: AUREA Admin final staging HTTPS and Chromium QA
+on:
+  push:
+    branches: [commercial/step6-isolated]
+    paths:
+      - '.github/workflows/admin-final-staging-qa.yml'
+permissions:
+  contents: read
+concurrency:
+  group: aurea-admin-staging-qa
+  cancel-in-progress: false
+jobs:
+  final-admin-qa:
+    if: github.ref == 'refs/heads/commercial/step6-isolated'
+    environment: aurea-staging-admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare Chromium without credentials
+        run: |
+          set -eu
+          node --version
+          psql --version
+          npm install --no-save --package-lock=false --ignore-scripts playwright@1.56.1
+          npx playwright install chromium
+      - name: Staging HTTPS, Chromium and cleanup
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ADMIN_DB_PASSWORD: ${{ secrets.SUPABASE_ADMIN_DB_PASSWORD }}
+        run: python3 architecture/commercial/admin-live-qa.py
