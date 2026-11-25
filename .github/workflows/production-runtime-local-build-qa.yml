@@ -1,0 +1,37 @@
+name: AUREA isolated production build QA (no deploy)
+on:
+  push:
+    branches: [qa/production-runtime-local-build-20261125]
+    paths: ['.github/workflows/production-runtime-local-build-qa.yml', 'architecture/production-local-build-qa.cjs']
+permissions:
+  contents: read
+jobs:
+  qa:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/qa/production-runtime-local-build-20261125'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Install approved build dependencies without caches or secrets
+        run: |
+          node --version
+          npm install --no-save --ignore-scripts --no-audit --no-fund esbuild@0.25.5 @supabase/supabase-js@2.49.4 playwright@1.51.1
+          npx --no-install playwright install chromium
+      - name: Build disabled production candidate and verify localhost integration
+        env:
+          AUREA_ENVIRONMENT: production
+          AUREA_SUPABASE_URL: https://dlibifwlmbfkboerlmqd.supabase.co
+          AUREA_SUPABASE_PUBLISHABLE_KEY: sb_publishable_XFEcctH-xzU6X6ABeIu7mw_IUWVmUhD
+        run: |
+          git diff --exit-code 1db5588021f90af4e30bfe5e1c2a23d759b817d2 -- ':!.github/workflows/production-runtime-local-build-qa.yml' ':!architecture/production-local-build-qa.cjs'
+          node architecture/build-production-manager.cjs
+          node --experimental-strip-types architecture/production-local-build-qa.cjs
+          cd dist-production-manager
+          zip -q -r ../aurea-disabled-production-build.zip .
+          cd ..
+          sha256sum aurea-disabled-production-build.zip
+          du -h aurea-disabled-production-build.zip
+      # Deliberately no artifact upload, cache, Netlify command or deploy step.
