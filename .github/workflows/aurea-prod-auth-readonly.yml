@@ -41,10 +41,13 @@ jobs:
           import os, json, urllib.request, urllib.parse
           token=os.environ['NETLIFY_AUTH_TOKEN'].strip()
           assert token, 'Missing production environment secret'
+          assert token.startswith('nfp_'), 'Stored value does not have the expected Netlify PAT prefix; no credential printed'
+          assert 30 <= len(token) <= 100 and token.isascii() and not any(c.isspace() for c in token), 'Stored value has unexpected token format; no credential printed'
+          print('Stored credential format: PASS')
           base='https://api.netlify.com/api/v1'
           def get(path):
               req=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
-              label = 'target site' if path.startswith('/sites/') else 'account' if path=='/accounts' else 'environment metadata'
+              label = 'target site' if path.startswith('/sites/') else 'user authentication' if path=='/user' else 'account' if path=='/accounts' else 'environment metadata'
               try:
                   with urllib.request.urlopen(req,timeout=30) as r:
                       data=json.load(r)
@@ -52,6 +55,7 @@ jobs:
                       return data
               except urllib.error.HTTPError as e:
                   raise SystemExit(label+': HTTP '+str(e.code)) from None
+          get('/user')
           site_id=os.environ['SITE']
           s=get('/sites/'+site_id)
           assert s['id']==site_id and s['name']=='cheerful-dodol-670625' and s['custom_domain']=='puls.aureapsihoterapija.com'
