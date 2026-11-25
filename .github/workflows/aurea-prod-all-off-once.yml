@@ -1,0 +1,191 @@
+name: AUREA production ALL OFF (single approved deploy)
+# Preparation commits cannot trigger this workflow. A separate owner-approved
+# commit adding the exact approval marker is required. Do not rerun a deploy.
+on:
+  push:
+    branches: [release-preparation/all-off-20261125]
+    paths: ['architecture/activation-candidate/RELEASE-ALL-OFF-APPROVAL.txt']
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: aurea-puls-existing-production-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/release-preparation/all-off-20261125' && github.run_attempt == 1 && github.event.head_commit.message == 'APPROVE AUREA ALL OFF ONE PRODUCTION DEPLOY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: aurea-production-all-off
+    defaults:
+      run:
+        shell: bash
+    env:
+      SITE: 6a45d04b-e25d-49ac-9238-946359545a8e
+      PREVIOUS: 6b073650b046dbef14cd6b86
+      ROOT: ${{ runner.temp }}/aurea-release
+    steps:
+      - name: Verify explicit release marker and assemble exact reviewed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$ROOT"
+          cd "$ROOT"
+          gh api "repos/$GITHUB_REPOSITORY/contents/architecture/activation-candidate/RELEASE-ALL-OFF-APPROVAL.txt?ref=$GITHUB_SHA" --jq .content | base64 -d > approval
+          test "$(cat approval)" = "APPROVED ONE ALL OFF DEPLOY 15 CREDITS; NO ACTIVATION"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/15058615408/zip" > runtime.zip
+          echo 'a650daf83c66502041d6aa9769f32b2369a5b5220ea28ed07ea9136fbec4eccb  runtime.zip' | sha256sum -c -
+          cat > manifest <<'MANIFEST'
+          e904070b9f1d8bc9cc4e15c33cde6ffcbef74f5020226aa981abbf36017c5b2d  functions/aurea-admin.mjs
+          bfdf2816c75c4d19e6ee5cab3bd3913a1e871a8bfe621ccda62732f1bb34a31c  functions/aurea-job-background.mjs
+          6b9ea69a5b3aa5419519ac61df60053a82505b62958e53dff6ac80a24ecc0eff  functions/aurea-tick.mjs
+          472041ff368d9ffb59a43a9552b4a373b9463a62e52145fc49d060126cfcf8f9  netlify.toml
+          c536f16fdc90b86b24cc6c8681bbe70923b61dbadede9ea29c5d7ea56b40d9dc  publish/_headers
+          3e4da83f144c8004f5f975bc19ec41ac5159f219cdfe2e7a0166fc8e5177b65f  publish/assets/natasa-guide.webp
+          1006105235bf984564698cc276af57181660953bcaed80cd1b36e30e739aee1c  publish/index.html
+          4a11f4036309bf517b665e5e698fa142159e386fc2b3ce4b0bea46ca521ac08d  publish/kringle/index.html
+          3e4da83f144c8004f5f975bc19ec41ac5159f219cdfe2e7a0166fc8e5177b65f  publish/puls-app/assets/natasa-guide.webp
+          26cb92143d974d75253165dc925ac3ef7d9a2d49d7c345852e00aebb39688055  publish/puls-app/edukacija/index.html
+          f72aa10abfdbd542dc397d9d288cf5d26032104912ff81b5273cca7e8578481a  publish/puls-app/employee.bundle.js
+          a761f7f04507fbb868afcb31c386b367ebe276bb8012ff97118b67753f6d4b20  publish/puls-app/manager-login.bundle.js
+          5325015c0136daa8a824e4fc3956989daf5daaa068e520edf1a1ca8c074cd57d  publish/puls-app/manager-login.css
+          2fd819483c0956c714c7d4620e3977dee17283a4b95746f8d162b3dee0bd5f8e  publish/puls-app/production-config.js
+          a714cefcb020f5d3cab3c9d473b0fc43c106dbecb8b934b7ebc10de52e70a811  publish/puls-app/rukovodilac/index.html
+          6a53ea2b18bab6821f0d1c506b014f1b3fafa1c8546a0ca25c2d67aab0202f78  publish/puls-app/signature-motion.js
+          2fb7d88c292f3f83093419d0d0dabc7edf192bc09de98638d75fffd1b38e997d  publish/puls-app/signature22-employee.css
+          fa7d2d32c0f83105a261229dfdd7f8f4877c9708fb7d181fd5c932f036739ad0  publish/puls-app/signature22-manager.css
+          dda548afcde7289aff6b6f03d67d1ab13fe95a075bf49e7ff0e99b362b40f4b9  publish/puls-app/zaposleni/index.html
+          e0ad23d21b6b23a837c51c4cce137cd9f8f846115f1e106c17913d6012c0091d  publish/rukovodilac/index.html
+          0330a414a5563cb064c8b1a3f4fe0a5652cf067f64f6bbf2c6928c012f8fc0d8  publish/signature-light.css
+          6a53ea2b18bab6821f0d1c506b014f1b3fafa1c8546a0ca25c2d67aab0202f78  publish/signature-motion.js
+          1333acbddced9a40ee64af3662484f65fcad95dc29dc2a90c21ecc84339b096b  publish/zaposleni/index.html
+          MANIFEST
+          python - <<'PY'
+          import hashlib, pathlib, urllib.request, urllib.parse, zipfile
+          root = pathlib.Path('.')
+          base = 'https://6b073650b046dbef14cd6b86--cheerful-dodol-670625.netlify.app/'
+          overlay = {'_headers','puls-app/employee.bundle.js','puls-app/manager-login.bundle.js','puls-app/production-config.js'}
+          expected = {}
+          for line in (root/'manifest').read_text().splitlines():
+              h, path = line.split('  ',1)
+              assert path not in expected
+              expected[path] = h
+          assert len(expected) == 23
+          with zipfile.ZipFile(root/'runtime.zip') as z:
+              for name, expected_hash in expected.items():
+                  if name == 'netlify.toml':
+                      data = b'[build]\n  publish = "publish"\n  functions = "functions"\n[functions]\n  node_bundler = "esbuild"\n'
+                  elif name.startswith('functions/'):
+                      data = z.read('server-'+name)
+                  elif name.startswith('publish/'):
+                      relative = name.removeprefix('publish/')
+                      if relative in overlay:
+                          data = z.read('browser-overlay/'+relative)
+                      else:
+                          # No credentials sent to public static host. Reject any
+                          # unexpected bytes, including redirects to login/404.
+                          with urllib.request.urlopen(base+urllib.parse.quote(relative,safe='/'),timeout=30) as response:
+                              assert urllib.parse.urlparse(response.url).netloc == urllib.parse.urlparse(base).netloc
+                              data = response.read(8*1024*1024+1)
+                  else:
+                      raise SystemExit('Unexpected manifest member')
+                  assert hashlib.sha256(data).hexdigest() == expected_hash, 'Source hash mismatch: '+name
+                  target = root/name
+                  target.parent.mkdir(parents=True,exist_ok=True)
+                  target.write_bytes(data)
+          assert len(list((root/'publish').rglob('*.*'))) >= 1
+          assert sum(p.is_file() for p in (root/'publish').rglob('*')) == 19
+          assert sum(p.is_file() for p in (root/'functions').rglob('*')) == 3
+          print('23/23 deploy payload hashes match; 19 static files, 3 functions and netlify.toml')
+          PY
+          sha256sum -c manifest
+      - name: Prepare pinned CLI without deployment credentials
+        run: |
+          set -euo pipefail
+          node -e 'const [a,b]=process.versions.node.split(".").map(Number);if(a<22||(a===22&&b<13))process.exit(1)'
+          cd "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/aurea-cli" --no-audit --no-fund --save-exact netlify-cli@27.20.1
+          "$RUNNER_TEMP/aurea-cli/node_modules/.bin/netlify" --version
+      - name: Check existing target, rollback and disabled runtime; no writes
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.AUREA_PROD_NETLIFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, json, urllib.request, urllib.parse
+          token=os.environ['NETLIFY_AUTH_TOKEN']
+          assert token, 'Missing production environment secret'
+          base='https://api.netlify.com/api/v1'
+          def get(path):
+              req=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              with urllib.request.urlopen(req,timeout=30) as r: return json.load(r)
+          site_id=os.environ['SITE']
+          s=get('/sites/'+site_id)
+          assert s['id']==site_id and s['name']=='cheerful-dodol-670625' and s['custom_domain']=='puls.aureapsihoterapija.com'
+          assert s['published_deploy']['id']==os.environ['PREVIOUS'], 'Rollback changed; stop'
+          accounts=get('/accounts')
+          account=[a for a in accounts if a.get('slug')=='natasa-pavlovic197']
+          assert len(account)==1 and account[0].get('id'), 'Team not confirmed'
+          aid=urllib.parse.quote(account[0]['id'],safe='')
+          path='/accounts/'+aid+'/env'
+          shared=get(path+'?context_name=production&scope=functions')
+          local=get(path+'?site_id='+site_id+'&context_name=production&scope=functions')
+          assert isinstance(shared,list) and isinstance(local,list)
+          gates={'AUREA_ENABLE_'+x for x in ('MANAGER','EMPLOYEE','ADMIN_READ','ADMIN_WRITE','BILLING_WRITE','SCHEDULER','DELIVERY')}
+          config={}
+          for v in shared+local:
+              key=v.get('key')
+              if key in gates or key in {'AUREA_ACTIVATION_APPROVAL','AUREA_ENVIRONMENT','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY','AUREA_ADMIN_ALLOWED_ORIGIN'}:
+                  values=v.get('values')
+                  assert isinstance(values,list), 'Cannot verify runtime variable metadata'
+                  for item in values:
+                      if item.get('context') not in ('all','production'): continue
+                      val=item.get('value')
+                      assert isinstance(val,str), 'Runtime value unavailable'
+                      if key in gates: assert val in ('','false'), 'Gate not OFF'
+                      elif key=='AUREA_ACTIVATION_APPROVAL': assert not val, 'Activation approval present'
+                      else: config.setdefault(key,set()).add(val)
+          for key, value in {'AUREA_ENVIRONMENT':'production','AUREA_SUPABASE_URL':'https://dlibifwlmbfkboerlmqd.supabase.co','AUREA_ADMIN_ALLOWED_ORIGIN':'https://aurea-puls-admin.netlify.app'}.items():
+              assert config.get(key)=={value}, 'Runtime configuration mismatch: '+key
+          import pathlib
+          configfile=pathlib.Path(os.environ['ROOT'])/'publish/puls-app/production-config.js'
+          public_config=json.loads(configfile.read_text().split('Object.freeze(',1)[1].rsplit(');',1)[0])
+          assert public_config['enabled'] is False and public_config['manager'] is False and public_config['employee'] is False
+          assert config.get('AUREA_SUPABASE_PUBLISHABLE_KEY')=={public_config['key']}
+          print('Existing target, rollback, runtime gates and public config verified.')
+          PY
+      - name: Single production deployment of verified prebuilt payload
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.AUREA_PROD_NETLIFY_TOKEN }}
+          NETLIFY_SITE_ID: 6a45d04b-e25d-49ac-9238-946359545a8e
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          cd "$ROOT"
+          test -n "$NETLIFY_AUTH_TOKEN"
+          sha256sum -c manifest
+          # No build scripts, no repo linking, no new site, no retries.
+          # The scheduled function may incur usage even with gates OFF.
+          "$RUNNER_TEMP/aurea-cli/node_modules/.bin/netlify" deploy --prod --no-build --site "$SITE" --dir publish --functions functions --message "AUREA reviewed ALL OFF release" --json > "$ROOT/deploy-result.json"
+          python - <<'PY'
+          import json
+          r=json.load(open('deploy-result.json'))
+          print('Netlify CLI returned success. Deploy ID:',r.get('deploy_id') or r.get('deployId') or 'inspect dashboard')
+          PY
+      - name: Confirm production deployment ID without exposing credentials
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.AUREA_PROD_NETLIFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json,urllib.request
+          req=urllib.request.Request('https://api.netlify.com/api/v1/sites/'+os.environ['SITE'],headers={'Authorization':'Bearer '+os.environ['NETLIFY_AUTH_TOKEN']})
+          with urllib.request.urlopen(req,timeout=30) as r: s=json.load(r)
+          d=s['published_deploy']
+          assert s['id']==os.environ['SITE'] and d['id']!=os.environ['PREVIOUS'] and d['state']=='ready'
+          print('Published deploy:',d['id'])
+          print('Prior rollback:',os.environ['PREVIOUS'])
+          print('Do not activate until separate live function/configuration verification.')
+          PY
