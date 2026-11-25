@@ -12,12 +12,18 @@ def check(ok,label):
     if not ok: raise RuntimeError(label)
     print("PASS "+label,flush=True)
 def sql(q):
-    env=dict(os.environ,PGPASSWORD=os.environ["SUPABASE_ADMIN_DB_PASSWORD"],PGSSLMODE="verify-full",PGSSLROOTCERT="system")
-    p=subprocess.run(["psql","-X","-qAt","-v","ON_ERROR_STOP=1","-h","aws-1-eu-west-1.pooler.supabase.com","-p","5432","-U","postgres."+REF,"-d","postgres"],input=q,text=True,capture_output=True,env=env,timeout=25)
-    if p.returncode: raise RuntimeError("staging SQL operation rejected")
+    env=dict(os.environ,PGPASSWORD=os.environ["SUPABASE_ADMIN_DB_PASSWORD"],PGSSLMODE="verify-full",PGSSLROOTCERT=os.environ["AUREA_QA_CA"],PGCONNECT_TIMEOUT="12",PGAPPNAME="aurea_admin_final_qa")
+    p=subprocess.run(["psql","-X","-w","-qAt","-v","ON_ERROR_STOP=1","-h","aws-1-eu-west-1.pooler.supabase.com","-p","5432","-U","postgres."+REF,"-d","postgres"],input=q,text=True,capture_output=True,env=env,timeout=25)
+    if p.returncode:
+        msg=p.stderr.lower()
+        for pattern,label in [("password authentication failed","DB authentication"),("certificate","TLS certificate"),("could not translate","DNS"),("timeout","connection timeout"),("permission denied","SQL permission"),("tenant or user not found","pooler identity")]:
+            if pattern in msg: raise RuntimeError(label)
+        raise RuntimeError("staging SQL rejected; raw diagnostics withheld")
     return p.stdout.strip()
 def main():
     check(bool(os.environ.get("SUPABASE_ADMIN_DB_PASSWORD")),"protected DB credential present")
+    check(os.environ.get("GITHUB_REF")=="refs/heads/commercial/step6-isolated" and os.environ.get("GITHUB_REPOSITORY")=="natasapavlovic197-cmyk/aurea-puls-tima-preview","staging branch guard")
+    check(sql("BEGIN READ ONLY; SELECT (session_user='postgres' AND current_user='postgres' AND current_database()='postgres' AND current_setting('transaction_read_only')='on' AND to_regclass('aurea_admin.auth_operators') IS NOT NULL)::text; ROLLBACK;")=="true","verified staging database identity")
     pub="sb_publishable_Za18LIyl1qfx2Tlucyj3Xg_CSWRukS6"
     # Use only new synthetic IDs, never the manager or delivery identities.
     nonce=str(uuid.uuid4()); email="aurea-admin-qa-"+nonce+"@example.invalid"; password=secrets.token_urlsafe(48)
