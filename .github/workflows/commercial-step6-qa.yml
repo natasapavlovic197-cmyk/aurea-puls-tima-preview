@@ -42,5 +42,9 @@ jobs:
           SQL
       - name: Apply candidate in disposable database
         run: psql -v ON_ERROR_STOP=1 -f architecture/commercial/step6-candidate.sql
+      - name: Apply lifecycle candidate in disposable database
+        run: psql -v ON_ERROR_STOP=1 -f architecture/commercial/step5-lifecycle.review.sql
       - name: Run transaction tests
         run: psql -v ON_ERROR_STOP=1 -f architecture/commercial/step6.synthetic.sql
+      - name: Run lifecycle transaction tests
+        run: psql -v ON_ERROR_STOP=1 -f architecture/commercial/step5-lifecycle.synthetic.sql
