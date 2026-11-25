@@ -1,0 +1,52 @@
+name: AUREA admin connection diagnostic (read only)
+on:
+  push:
+    branches: [commercial/step6-isolated]
+    paths: ['.github/workflows/admin-connection-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/commercial/step6-isolated'
+    environment: aurea-staging-admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Verify pinned CA and authenticated read-only connection
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_ADMIN_DB_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "${PGPASSWORD:-}" || { echo 'FAIL missing DB credential'; exit 1; }
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"; unset PGPASSWORD' EXIT
+          curl --fail --silent --proto '=https' --max-time 20 'https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt' -o "$work/ca.crt" || { echo 'FAIL CA download'; exit 1; }
+          fingerprint="$(openssl x509 -in "$work/ca.crt" -outform DER | sha256sum | cut -d ' ' -f 1)"
+          test "$fingerprint" = '807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa' || { echo 'FAIL CA fingerprint mismatch'; exit 1; }
+          echo 'PASS verified provider CA'
+          export PGHOST=aws-1-eu-west-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGUSER=postgres.ublzmoroanhlcgpnxilw PGSSLMODE=verify-full PGCONNECT_TIMEOUT=12 PGAPPNAME=aurea_admin_readonly_preflight
+          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000'
+          classify() {
+            if grep -Eqi 'password authentication failed|authentication failed|invalid password' "$work/error"; then echo 'FAIL DB authentication';
+            elif grep -Eqi 'certificate|SSL|TLS|root cert' "$work/error"; then echo 'FAIL TLS certificate or client compatibility';
+            elif grep -Eqi 'could not translate|name or service not known' "$work/error"; then echo 'FAIL DNS';
+            elif grep -Eqi 'timeout|timed out|connection refused|network is unreachable' "$work/error"; then echo 'FAIL TCP connectivity';
+            elif grep -Eqi 'tenant or user not found|role .* does not exist' "$work/error"; then echo 'FAIL pooler tenant or role';
+            elif grep -Eqi 'permission denied' "$work/error"; then echo 'FAIL SQL permission';
+            else echo 'FAIL unclassified connection or SQL error (raw details withheld)'; fi
+          }
+          query="BEGIN READ ONLY; SELECT (session_user='postgres' AND current_user='postgres' AND current_database()='postgres' AND current_setting('transaction_read_only')='on' AND to_regclass('aurea_admin.auth_operators') IS NOT NULL)::text; ROLLBACK;"
+          for mode in system pinned; do
+            if [ "$mode" = system ]; then export PGSSLROOTCERT=system; else export PGSSLROOTCERT="$work/ca.crt"; fi
+            echo "CA mode: $mode"
+            if psql -X -w -qAt -v ON_ERROR_STOP=1 -c "$query" >"$work/result" 2>"$work/error"; then
+              test "$(cat "$work/result")" = true || { echo 'FAIL identity or staging guard'; exit 1; }
+              echo "PASS $mode authenticated read-only query"
+            else
+              classify
+              if [ "$mode" = pinned ]; then exit 1; fi
+            fi
+          done
+          echo 'NO WRITES; no synthetic users; no deployment'
