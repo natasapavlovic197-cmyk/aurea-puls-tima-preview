@@ -9,7 +9,7 @@ ALTER TABLE aurea_billing.bank_evidence ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON aurea_billing.bank_evidence FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION aurea_admin.billing_dispatch(p_action text,p_payload jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE org uuid; inv uuid; result jsonb; outcome text; a aurea_commercial.accounts%ROWTYPE; b aurea_billing.bank_evidence%ROWTYPE; booked date;
+DECLARE org uuid; inv uuid; result jsonb; outcome text; a aurea_commercial.accounts%ROWTYPE; v_evidence aurea_billing.bank_evidence%ROWTYPE; booked date;
 BEGIN
  PERFORM aurea_admin.require_operator();
  IF jsonb_typeof(p_payload) IS DISTINCT FROM 'object' THEN RAISE EXCEPTION 'invalid payload'; END IF;
@@ -29,8 +29,8 @@ BEGIN
    INSERT INTO aurea_billing.bank_evidence(invoice_id,operator_id,statement_ref,booked_on) VALUES(inv,auth.uid(),btrim(p_payload->>'statement_ref'),booked);
    INSERT INTO aurea_admin.audit(actor,organization_id,operation,after_state) VALUES(auth.uid()::text::name,org,'billing_confirm_bank',jsonb_build_object('invoice',inv,'reference',p_payload->>'reference','booked_on',booked,'amount_minor',p_payload->>'amount_minor','currency',p_payload->>'currency'));
   ELSE
-   SELECT * INTO STRICT b FROM aurea_billing.bank_evidence WHERE invoice_id=inv;
-   IF b.statement_ref IS DISTINCT FROM btrim(p_payload->>'statement_ref') OR b.booked_on IS DISTINCT FROM booked THEN RAISE EXCEPTION 'evidence mismatch'; END IF;
+   SELECT * INTO STRICT v_evidence FROM aurea_billing.bank_evidence WHERE invoice_id=inv;
+   IF v_evidence.statement_ref IS DISTINCT FROM btrim(p_payload->>'statement_ref') OR v_evidence.booked_on IS DISTINCT FROM booked THEN RAISE EXCEPTION 'evidence mismatch'; END IF;
   END IF;
   result:=jsonb_build_object('status',outcome);
  WHEN 'billing_list' THEN
