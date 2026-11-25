@@ -23,8 +23,11 @@ jobs:
     env:
       SITE: 6a45d04b-e25d-49ac-9238-946359545a8e
       PREVIOUS: 6b073650b046dbef14cd6b86
-      ROOT: ${{ runner.temp }}/aurea-release
     steps:
+      - name: Initialize isolated release directory
+        run: |
+          set -euo pipefail
+          printf 'ROOT=%s/aurea-release\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Verify explicit release marker and assemble exact reviewed files
         env:
           GH_TOKEN: ${{ github.token }}
