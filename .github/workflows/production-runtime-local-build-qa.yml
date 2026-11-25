@@ -1,38 +1,89 @@
-name: AUREA isolated production build QA (no deploy)
+name: AUREA verified production ZIP artifact (hash-only, no deploy)
 on:
   push:
     branches: [qa/production-runtime-local-build-20261125]
-    paths: ['.github/workflows/production-runtime-local-build-qa.yml', 'architecture/production-local-build-qa.cjs']
+    paths: ['.github/workflows/production-runtime-local-build-qa.yml']
 permissions:
   contents: read
 jobs:
-  qa:
+  package:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/qa/production-runtime-local-build-20261125'
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 7
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-          fetch-depth: 3
-          ref: ${{ github.sha }}
-      - name: Install approved build dependencies without caches or secrets
-        run: |
-          node --version
-          npm install --no-save --ignore-scripts --no-audit --no-fund esbuild@0.25.5 @supabase/supabase-js@2.49.4 playwright@1.51.1
-          npx --no-install playwright install chromium
-      - name: Build disabled production candidate and verify localhost integration
+          ref: 1db5588021f90af4e30bfe5e1c2a23d759b817d2
+      - name: Reproduce public build only
         env:
           AUREA_ENVIRONMENT: production
           AUREA_SUPABASE_URL: https://dlibifwlmbfkboerlmqd.supabase.co
           AUREA_SUPABASE_PUBLISHABLE_KEY: sb_publishable_XFEcctH-xzU6X6ABeIu7mw_IUWVmUhD
         run: |
-          git diff --exit-code 1db5588021f90af4e30bfe5e1c2a23d759b817d2 -- ':!.github/workflows/production-runtime-local-build-qa.yml' ':!architecture/production-local-build-qa.cjs'
+          test "$(git rev-parse HEAD)" = "1db5588021f90af4e30bfe5e1c2a23d759b817d2"
+          node --version
+          npm install --no-save --ignore-scripts --no-audit --no-fund esbuild@0.25.5 @supabase/supabase-js@2.49.4
           node architecture/build-production-manager.cjs
-          node --experimental-strip-types architecture/production-local-build-qa.cjs
+      - name: Compare all 11 file hashes from QA run 45673858958 and archive
+        run: |
+          set -euo pipefail
+          mkdir -p release-evidence
+          cat > release-evidence/SHA256SUMS <<'MANIFEST'
+          3e4da83f144c8004f5f975bc19ec41ac5159f219cdfe2e7a0166fc8e5177b65f  assets/natasa-guide.webp
+          e5be0d93008d5dd0b0ac4aafd4f323a84cc6bbd157b3a8cbb6cf3e2efc867a82  employee.bundle.js
+          3df48e2eaf7ac57cfa74a11ac97306a1791aa93aade21ad33c7bf24215175dfc  employee.html
+          a37f806bf544740321b5edffbf39cdc79185a5256d3e00ee807d20db50c9259f  index.html
+          2a1f18ab9d81c883b0cd649c3589d1f5bdb0afc3368a2f82bc4e4daad5dc80b0  manager-login.bundle.js
+          5325015c0136daa8a824e4fc3956989daf5daaa068e520edf1a1ca8c074cd57d  manager-login.css
+          747cbd500afb350b3948bc2088aa046d371e5a1741143e5bb2382f4defed6343  production-config.js
+          26cb92143d974d75253165dc925ac3ef7d9a2d49d7c345852e00aebb39688055  signature-education.html
+          6a53ea2b18bab6821f0d1c506b014f1b3fafa1c8546a0ca25c2d67aab0202f78  signature-motion.js
+          2fb7d88c292f3f83093419d0d0dabc7edf192bc09de98638d75fffd1b38e997d  signature22-employee.css
+          fa7d2d32c0f83105a261229dfdd7f8f4877c9708fb7d181fd5c932f036739ad0  signature22-manager.css
+          MANIFEST
           cd dist-production-manager
-          zip -q -r ../aurea-disabled-production-build.zip .
+          find . -type f -printf '%P\n' | LC_ALL=C sort > ../release-evidence/actual-paths.txt
+          awk '{print $2}' ../release-evidence/SHA256SUMS | LC_ALL=C sort > ../release-evidence/expected-paths.txt
+          diff -u ../release-evidence/expected-paths.txt ../release-evidence/actual-paths.txt
+          sha256sum -c ../release-evidence/SHA256SUMS
+          zip -q -r ../release-evidence/aurea-disabled-production-build.zip .
           cd ..
-          sha256sum aurea-disabled-production-build.zip
-          du -h aurea-disabled-production-build.zip
-      # Deliberately no artifact upload, cache, Netlify command or deploy step.
+          rm release-evidence/actual-paths.txt release-evidence/expected-paths.txt
+          (cd release-evidence && sha256sum aurea-disabled-production-build.zip > ZIP-SHA256SUM)
+          echo 'PASS exact 11/11 verified public file hashes; no functional tests or deployment'
+      - name: Save release plan outside public ZIP
+        run: |
+          cat > release-evidence/RELEASE-PLAN.md <<'PLAN'
+          # AUREA Puls tima — controlled manual release plan (2026-11-25)
+          Status: disabled candidate only; no production deployment approval. Baseline production source 1db5588021f90af4e30bfe5e1c2a23d759b817d2; successful localhost QA run 45673858958, commit 37b7310fec7fbde8deffa14b2bb44d2b517dd652. The artifact contains 11 verified PUBLIC files only. It is not the currently live landing/demo or a fully operational release. The archive must not replace the live root without preserving existing pages/routes and explicitly approving the assembled release.
+          
+          ## 1. Pre-release gate — no remote writes
+          - Target Netlify site cheerful-dodol-670625, ID 6a45d04b-e25d-49ac-9238-946359545a8e, custom domain puls.aureapsihoterapija.com. Keep unlinked/manual; main aureapsihoterapija.com and preview site 91ffeb5a-796e-4b2a-9fde-517c7e42f708 untouched.
+          - Record current production deploy ID and restore procedure, current route/landing manifest and header policy; obtain current site source, not an old archive. Check actual credit cost/remaining balance before approving one release.
+          - Extract inner ZIP into clean directory; sha256sum -c SHA256SUMS from that directory. Do not upload GitHub artifact outer archive, release plan, repo, source SQL or secrets. Archive container hash can differ due to ZIP timestamps; exact extracted file hashes govern.
+          - Three existing site-only variables AUREA_ENVIRONMENT, AUREA_SUPABASE_URL, AUREA_SUPABASE_PUBLISHABLE_KEY currently apply to all deploy contexts; correct to Production only (Builds/Functions as needed), verify other contexts absent and no shared team override. No new credentials, keep flags absent/false. Use dashboard or authorized CLI/API; do not connect Git.
+          - Runtime reads hardcoded approved public project pair and immutable disabled gate. No live manager/employee login in this artifact. A future activation change requires its own QA and approval; browser gate is not a substitute for database authorization.
+          
+          ## 2. Assemble one website release, no automatic deployment
+          - Preserve current public root/demo and its assets; select final nonconflicting manager/employee routes and education path, validate absolute asset paths, existing redirects and headers, mobile and role separation. Add security headers/referrer policy, CSP compatible with intended production HTTPS endpoints; avoid analytics/referrers containing capability tokens. No Signature master changes. Do not publish QA admin portal as public static content.
+          - Explicitly verify public production API accessibility (not yet proven by this offline QA), Auth config (closed signup, redirect allowlist/password policy), production-only keys, no staging references or secret leakage. Do not weaken RLS or privacy gates.
+          - Manual Netlify CLI supports publishing prebuilt public files without a Git connection. Inspect installed CLI help and ensure no build; use a clean release directory with no inherited functions folder. After separate owner approval, exact site-ID target, explicit publish directory, no build, explicit production flag, one deployment. No command is executed by this plan. Dashboard manual Drop only for static files; any eventual Netlify functions must be separately bundled outside public directory and intentionally included.
+          - Record pre/post deploy IDs, cost, routes and headers. Rollback only to recorded known-good release under owner approval if verification fails.
+          
+          ## 3. Server activation dependencies — NOT included in public ZIP
+          - Admin/billing source architecture/commercial/billing-admin-edge-production.ts is disabled (503), not deployed. Select exact admin origin, dedicated production Edge function configuration and Auth verification, server-only environment (Supabase URL and appropriate production publishable key; no service-role browser exposure), private operator provisioning with expiry. Confirm production RPC auth and cross-company denial; admin portal currently disabled. Explicit approval for production Edge deploy, operator and billing actions. Manual bank confirmation, no payment provider.
+          - Delivery source architecture/postgrest-runtime/production-delivery-runtime.cjs and production-weekly-scheduler.cjs are disabled and not registered as hosted jobs. Choose actual server runtime/scheduler, production-only scoped Auth service identity, new unique password/HMAC secret in server secret store only, empty company allowlist until approved pilot, provider credentials only when approved. Never reuse staging identities, secrets or long-lived admin JWT. Define monitoring/revocation and no raw token logging. Validate URL routing, provider logs, exact capability route and abuse controls with synthetic cases before real invites. Schedule Monday/Wednesday/Friday Europe/Belgrade after activation approval; provider remains off until then.
+          - No automatic charges, no actual messages, no real users. Verify applicable privacy/retention/contract, accountant-approved billing and pilot minimum privacy group requirements before pilot.
+          
+          ## 4. Release gates and rollback
+          - Step 2 closes only after production hosting context isolation, exact target/authorization and integration configuration are verified. Step 3 assembles and verifies actual site integration, with separately approved publishing. Step 4 provisions pilot and enables services in controlled order, only after real authorization and safety gates.
+          - Record evidence of zero accidental activations. If any mismatch, stop; do not publish partial product or overwrite existing domain.
+          - References: https://docs.netlify.com/deploy/create-deploys/ ; https://docs.netlify.com/build/environment-variables/overview/ ; https://docs.netlify.com/api-and-cli-guides/cli-guides/get-started-with-cli/ ; https://supabase.com/docs/guides/functions/deploy ; https://supabase.com/docs/guides/functions/secrets
+          PLAN
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurea-disabled-production-verified
+          path: release-evidence/
+          retention-days: 7
+          if-no-files-found: error
