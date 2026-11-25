@@ -1,0 +1,33 @@
+BEGIN;
+DO $$
+DECLARE u uuid:=gen_random_uuid(); v uuid:=gen_random_uuid(); sid uuid:=gen_random_uuid(); vid uuid:=gen_random_uuid(); org uuid:=gen_random_uuid(); inv uuid; r jsonb; t timestamptz;
+BEGIN
+ INSERT INTO auth.users(id) VALUES(u),(v);
+ INSERT INTO auth.sessions(id,user_id,not_after) VALUES(sid,u,now()+interval '5 minutes'),(vid,v,now()+interval '5 minutes');
+ INSERT INTO aurea_admin.auth_operators(user_id,expires_at) VALUES(u,now()+interval '5 minutes');
+ INSERT INTO aurea_private.organizations(id,name) VALUES(org,'Synthetic Billing Admin');
+ INSERT INTO aurea_commercial.accounts(organization_id,seats) VALUES(org,50);
+ PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',v,'session_id',vid)::text,true);
+ EXECUTE 'SET LOCAL ROLE authenticated';
+ BEGIN PERFORM public.aurea_admin_billing_v1('billing_list',jsonb_build_object('org',org)); RAISE EXCEPTION 'unauthorized read' USING ERRCODE='XX000'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ EXECUTE 'RESET ROLE';
+ PERFORM set_config('request.jwt.claims',jsonb_build_object('sub',u,'session_id',sid)::text,true);
+ EXECUTE 'SET LOCAL ROLE authenticated';
+ r:=public.aurea_admin_billing_v1('billing_issue',jsonb_build_object('org',org,'currency','RSD','rate',117.2,'rate_date',current_date));
+ inv:=(r->>'invoice_id')::uuid;
+ IF (r->>'amount_minor')::bigint<>1758000 THEN RAISE EXCEPTION 'wrong amount'; END IF;
+ BEGIN PERFORM public.aurea_admin_billing_v1('billing_confirm_bank',jsonb_build_object('org',org,'invoice',inv,'reference','QA-1','amount_minor',1758000,'currency','RSD','booked_on',current_date)); RAISE EXCEPTION 'missing evidence allowed' USING ERRCODE='XX000'; EXCEPTION WHEN raise_exception THEN NULL; END;
+ r:=jsonb_build_object('org',org,'invoice',inv,'reference','QA-1','amount_minor',1758000,'currency','RSD','booked_on',current_date,'statement_ref','QA statement');
+ IF public.aurea_admin_billing_v1('billing_confirm_bank',r)->>'status'<>'settled' THEN RAISE EXCEPTION 'settlement'; END IF;
+ IF public.aurea_admin_billing_v1('billing_confirm_bank',r)->>'status'<>'duplicate' THEN RAISE EXCEPTION 'duplicate'; END IF;
+ IF public.aurea_admin_billing_v1('billing_list',jsonb_build_object('org',org))->0->>'operator_id'<>u::text THEN RAISE EXCEPTION 'identity export'; END IF;
+ EXECUTE 'RESET ROLE';
+ IF (SELECT count(*) FROM aurea_admin.audit WHERE organization_id=org AND actor=u::text::name)<>2 THEN RAISE EXCEPTION 'audit count'; END IF;
+ IF has_table_privilege('authenticated','aurea_billing.bank_evidence','SELECT') OR has_function_privilege('anon','public.aurea_admin_billing_v1(text,jsonb)','EXECUTE') THEN RAISE EXCEPTION 'privilege leak'; END IF;
+ UPDATE aurea_admin.auth_operators SET enabled=false WHERE user_id=u;
+ EXECUTE 'SET LOCAL ROLE authenticated';
+ BEGIN PERFORM public.aurea_admin_billing_v1('billing_list',jsonb_build_object('org',org)); RAISE EXCEPTION 'disabled operator allowed' USING ERRCODE='XX000'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+ EXECUTE 'RESET ROLE';
+END $$;
+ROLLBACK;
+SELECT 'PASS integrated billing admin';
