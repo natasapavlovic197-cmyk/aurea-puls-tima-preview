@@ -1,4 +1,4 @@
-name: AUREA public route inventory (read only)
+name: AUREA production alias routes and DNS (read only)
 on:
   push:
     branches: [qa/production-runtime-local-build-20261125]
@@ -11,62 +11,79 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 4
     steps:
-      - name: Inspect current public pages using GET only
+      - name: Capture current public alias routes and product link
         run: |
-          mkdir -p route-evidence
           python3 - <<'PY'
-          import urllib.request, urllib.error, urllib.parse, hashlib, json, re, pathlib, concurrent.futures
+          import urllib.request, urllib.error, urllib.parse, hashlib, json, re, pathlib, concurrent.futures, socket
           from html.parser import HTMLParser
-          base='https://puls.aureapsihoterapija.com'
-          alias='https://cheerful-dodol-670625.netlify.app'
-          hosts={urllib.parse.urlparse(base).netloc,urllib.parse.urlparse(alias).netloc,'aureapsihoterapija.com','www.aureapsihoterapija.com'}
+          origin='https://cheerful-dodol-670625.netlify.app'
+          host=urllib.parse.urlsplit(origin).netloc
+          out=pathlib.Path('public-route-evidence'); out.mkdir(exist_ok=True)
           class NoRedirect(urllib.request.HTTPRedirectHandler):
               def redirect_request(self,*args,**kwargs): return None
           opener=urllib.request.build_opener(NoRedirect())
           class Parse(HTMLParser):
-              def __init__(self): super().__init__(); self.links=set(); self.title=''; self.in_title=False
+              def __init__(self): super().__init__(); self.refs=set(); self.title=''; self.in_title=False
               def handle_starttag(self,tag,attrs):
                   a=dict(attrs)
                   if tag=='title': self.in_title=True
-                  if tag in ['a','link','script','img','iframe','source']:
-                      for k in ['href','src']:
-                          if a.get(k) and not a[k].startswith(('data:','javascript:','mailto:','#','tel:')): self.links.add(a[k])
+                  for key in (['href'] if tag in ['a','link'] else ['src'] if tag in ['img','script','iframe','source','audio','video'] else []):
+                      if a.get(key): self.refs.add(a[key])
               def handle_endtag(self,tag):
                   if tag=='title': self.in_title=False
               def handle_data(self,data):
                   if self.in_title: self.title+=data
-          def inspect(url):
+          def get(url):
               try:
-                  req=urllib.request.Request(url,headers={'User-Agent':'AUREA-Owner-ReadOnly-Inventory/1.0','Accept':'text/html,application/xml,text/plain,*/*;q=0.1'},method='GET')
+                  req=urllib.request.Request(url,headers={'User-Agent':'AUREA-Owner-ReadOnly-Inventory/1.0','Accept':'*/*'},method='GET')
                   try: r=opener.open(req,timeout=12)
                   except urllib.error.HTTPError as e: r=e
                   with r:
-                      content=r.read(12*1024*1024+1)
-                      if len(content)>12*1024*1024: raise ValueError('body limit')
+                      b=r.read(14*1024*1024+1)
+                      if len(b)>14*1024*1024: raise ValueError('body limit')
                       ct=r.headers.get('Content-Type','')
-                      row={'url':url,'status':r.status,'type':ct,'size':len(content),'sha256':hashlib.sha256(content).hexdigest(),'headers':{k:r.headers.get(k) for k in ['Content-Security-Policy','Referrer-Policy','X-Robots-Tag','Cache-Control','X-Frame-Options','Location','ETag'] if r.headers.get(k)}}
-                      if 'text/html' in ct and r.status==200:
-                          p=Parse();p.feed(content.decode('utf-8','replace'));row['title']=p.title[:200]
-                          links=set()
-                          for link in p.links:
-                              u=urllib.parse.urlparse(urllib.parse.urljoin(url,link))
-                              if u.scheme=='https' and u.netloc in hosts and not u.query and not u.fragment: links.add(u.netloc+u.path)
-                          row['links']=sorted(links)[:150]
-                          # Public content only; refuse any suspected credentials from captured HTML.
-                          if not re.search(rb'sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN (?:RSA |EC )?PRIVATE KEY-----',content):
-                              name=hashlib.sha256(url.encode()).hexdigest()[:16]+'.html';pathlib.Path('route-evidence',name).write_bytes(content);row['snapshot']=name
+                      row={'url':url,'status':r.status,'type':ct,'size':len(b),'sha256':hashlib.sha256(b).hexdigest(),'headers':{k:r.headers.get(k) for k in ['Content-Security-Policy','Referrer-Policy','X-Robots-Tag','Cache-Control','X-Frame-Options','Location','ETag'] if r.headers.get(k)}}
+                      u=urllib.parse.urlsplit(url); refs=[]
+                      if r.status==200 and 'text/html' in ct:
+                          p=Parse();p.feed(b.decode('utf-8','replace'));row['title']=p.title[:200]
+                          for ref in p.refs:
+                              v=urllib.parse.urlsplit(urllib.parse.urljoin(url,ref))
+                              if v.scheme=='https' and v.netloc==host and not v.query and not v.fragment and re.fullmatch(r'/[A-Za-z0-9_./-]*',v.path) and not any(x in v.path.lower() for x in ['/api/','/.netlify/','/auth/v1/','/admin','/token','/logout','/callback','/invite']):
+                                  if v.path.endswith('/') or v.path.rsplit('/',1)[-1].split('.')[-1].lower() in ['html','js','css','png','jpg','jpeg','webp','svg','ico','woff','woff2','ttf','json','txt','xml','gif','mp4','webm']:refs.append(origin+v.path)
+                          row['links']=sorted(set(refs))[:100]
+                      if r.status==200 and u.netloc==host and 'text/html' in ct and not re.search(rb'sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN (?:RSA |EC )?PRIVATE KEY-----',b):
+                          name=hashlib.sha256(url.encode()).hexdigest()[:20]+'.html';(out/name).write_bytes(b);row['snapshot']=name
+                      elif r.status==200 and u.netloc==host and 'text/html' not in ct and not re.search(rb'sb_secret_[A-Za-z0-9_-]{10,}|-----BEGIN (?:RSA |EC )?PRIVATE KEY-----',b):
+                          name=hashlib.sha256(url.encode()).hexdigest()[:20]+'.bin';(out/name).write_bytes(b);row['snapshot']=name
+                      elif r.status==200 and u.netloc=='aureapsihoterapija.com' and 'text/html' in ct:
+                          name=hashlib.sha256(url.encode()).hexdigest()[:20]+'.html';(out/name).write_bytes(b);row['snapshot']=name
+                          p=Parse();p.feed(b.decode('utf-8','replace'));row['title']=p.title[:200];row['links']=sorted({urllib.parse.urljoin(url,a) for a in p.refs if 'puls' in a.lower() and len(a)<500 and '?' not in a and '#' not in a})
                       return row
-              except Exception as e: return {'url':url,'error':str(e)[:250]}
-          paths=['/','/zaposleni/','/rukovodilac/','/portal/','/portal/auth/','/kringle/','/v4-demo/','/odgovor/','/radni-prostor/','/robots.txt','/sitemap.xml','/poslovni-prostor/','/puls-app/']
-          urls=[base+p for p in paths]+[alias+'/','https://aureapsihoterapija.com/','https://aureapsihoterapija.com/za-organizacije']
-          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool: rows=list(pool.map(inspect,urls))
-          pathlib.Path('route-evidence/inventory.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
-          for row in rows: print(json.dumps({k:v for k,v in row.items() if k!='links'},ensure_ascii=False))
-          print('PUBLIC ROUTE INVENTORY ONLY; not proof of complete deploy backup; no writes or activation')
+              except Exception as e:return {'url':url,'error':str(e)[:250]}
+          paths=['/','/zaposleni/','/rukovodilac/','/kringle/','/portal/','/portal/auth/','/v4-demo/','/odgovor/','/radni-prostor/','/robots.txt','/sitemap.xml','/poslovni-prostor/','/puls-app/','/puls-app/rukovodilac/','/puls-app/zaposleni/','/puls-app/edukacija/']
+          urls=[origin+x for x in paths]+['https://aureapsihoterapija.com/za-organizacije/puls-tima']
+          rows=[]
+          with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+              rows=list(pool.map(get,urls))
+              # One bounded expansion of actual public route/resource references only.
+              seen=set(urls);todo=sorted({l for row in rows for l in row.get('links',[]) if l.startswith(origin+'/') and l not in seen})[:24]
+              rows.extend(pool.map(get,todo))
+          dns=[]
+          for typ in ['A','CNAME','AAAA']:
+              url='https://dns.google/resolve?name=puls.aureapsihoterapija.com&type='+typ
+              try:
+                  with urllib.request.urlopen(url,timeout=8) as r:
+                      j=json.load(r);dns.append({'type':typ,'status':j.get('Status'),'answers':j.get('Answer',[])})
+              except Exception as e:dns.append({'type':typ,'error':str(e)[:200]})
+          (out/'inventory.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+          (out/'dns.json').write_text(json.dumps(dns,ensure_ascii=False,indent=2))
+          for r in rows: print(json.dumps({k:v for k,v in r.items() if k!='links'},ensure_ascii=False))
+          print('DNS '+json.dumps(dns,ensure_ascii=False))
+          print('READ ONLY; bounded public snapshot is not a complete Netlify deploy backup')
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: aurea-current-public-route-inventory
-          path: route-evidence/
+          name: aurea-production-alias-route-evidence
+          path: public-route-evidence/
           retention-days: 7
           if-no-files-found: error
