@@ -1,0 +1,22 @@
+name: AUREA isolated activation components QA
+on:
+  push:
+    branches: [production/activation-pilot-preparation]
+    paths: ['architecture/activation-candidate/**', '.github/workflows/production-activation-candidate-qa.yml']
+permissions:
+  contents: read
+jobs:
+  targeted:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/production/activation-pilot-preparation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 3
+      - name: Verify only new components and isolated QA workflow changed
+        run: |
+          git diff --exit-code e0696539887a993c07b3a7ca72ffd89bb1a16e08 -- ':!architecture/activation-candidate/**' ':!.github/workflows/production-activation-candidate-qa.yml'
+          node --version
+          node --test architecture/activation-candidate/activation.test.cjs
