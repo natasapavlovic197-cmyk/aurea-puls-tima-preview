@@ -1,5 +1,11 @@
 Deno.serve(async(req:Request)=>{
- const reply=(status:number,data:unknown)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+ const origin=req.headers.get("origin");
+ const allowed="http://127.0.0.1:4173";
+ const cors:Record<string,string>={"Vary":"Origin"};
+ if(origin===allowed){cors["Access-Control-Allow-Origin"]=allowed;cors["Access-Control-Allow-Headers"]="authorization, apikey, content-type";cors["Access-Control-Allow-Methods"]="POST, OPTIONS";}
+ if(req.method==="OPTIONS")return new Response(null,{status:origin===allowed?204:403,headers:cors});
+ const reply=(status:number,data:unknown)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json",...cors,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+ if(origin&&origin!==allowed)return reply(403,{error:"origin"});
  if(req.method!=="POST")return reply(405,{error:"method"});
  const authorization=req.headers.get("authorization")||"";
  if(!/^Bearer [^\s]+$/.test(authorization))return reply(401,{error:"unauthorized"});
