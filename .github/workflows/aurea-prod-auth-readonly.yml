@@ -1,0 +1,89 @@
+name: AUREA production authorization READ ONLY
+on:
+  push:
+    branches: [release-preparation/all-off-20261125]
+    paths: ['.github/workflows/aurea-prod-auth-readonly.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/release-preparation/all-off-20261125' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: aurea-production-all-off
+    env:
+      SITE: 6a45d04b-e25d-49ac-9238-946359545a8e
+      PREVIOUS: 6b073650b046dbef14cd6b86
+    steps:
+      - name: Initialize isolated directory
+        run: |
+          set -euo pipefail
+          printf 'ROOT=%s/aurea-auth-check\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Read verified public configuration from reviewed artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$ROOT/publish/puls-app"
+          cd "$ROOT"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/15058615408/zip" > runtime.zip
+          echo 'a650daf83c66502041d6aa9769f32b2369a5b5220ea28ed07ea9136fbec4eccb  runtime.zip' | sha256sum -c -
+          unzip -p runtime.zip browser-overlay/puls-app/production-config.js > publish/puls-app/production-config.js
+          echo '2fd819483c0956c714c7d4620e3977dee17283a4b95746f8d162b3dee0bd5f8e  publish/puls-app/production-config.js' | sha256sum -c -
+      - name: Check existing target, rollback and disabled runtime; no writes
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.AUREA_PROD_NETLIFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, json, urllib.request, urllib.parse
+          token=os.environ['NETLIFY_AUTH_TOKEN'].strip()
+          assert token, 'Missing production environment secret'
+          base='https://api.netlify.com/api/v1'
+          def get(path):
+              req=urllib.request.Request(base+path,headers={'Authorization':'Bearer '+token,'Accept':'application/json'})
+              label = 'target site' if path.startswith('/sites/') else 'account' if path=='/accounts' else 'environment metadata'
+              try:
+                  with urllib.request.urlopen(req,timeout=30) as r:
+                      data=json.load(r)
+                      print(label+': HTTP '+str(r.status))
+                      return data
+              except urllib.error.HTTPError as e:
+                  raise SystemExit(label+': HTTP '+str(e.code)) from None
+          site_id=os.environ['SITE']
+          s=get('/sites/'+site_id)
+          assert s['id']==site_id and s['name']=='cheerful-dodol-670625' and s['custom_domain']=='puls.aureapsihoterapija.com'
+          assert s['published_deploy']['id']==os.environ['PREVIOUS'], 'Rollback changed; stop'
+          accounts=get('/accounts')
+          account=[a for a in accounts if a.get('slug')=='natasa-pavlovic197']
+          assert len(account)==1 and account[0].get('id'), 'Team not confirmed'
+          aid=urllib.parse.quote(account[0]['id'],safe='')
+          path='/accounts/'+aid+'/env'
+          shared=get(path+'?context_name=production&scope=functions')
+          local=get(path+'?site_id='+site_id+'&context_name=production&scope=functions')
+          assert isinstance(shared,list) and isinstance(local,list)
+          gates={'AUREA_ENABLE_'+x for x in ('MANAGER','EMPLOYEE','ADMIN_READ','ADMIN_WRITE','BILLING_WRITE','SCHEDULER','DELIVERY')}
+          config={}
+          for v in shared+local:
+              key=v.get('key')
+              if key in gates or key in {'AUREA_ACTIVATION_APPROVAL','AUREA_ENVIRONMENT','AUREA_SUPABASE_URL','AUREA_SUPABASE_PUBLISHABLE_KEY','AUREA_ADMIN_ALLOWED_ORIGIN'}:
+                  values=v.get('values')
+                  assert isinstance(values,list), 'Cannot verify runtime variable metadata'
+                  for item in values:
+                      if item.get('context') not in ('all','production'): continue
+                      val=item.get('value')
+                      assert isinstance(val,str), 'Runtime value unavailable'
+                      if key in gates: assert val in ('','false'), 'Gate not OFF'
+                      elif key=='AUREA_ACTIVATION_APPROVAL': assert not val, 'Activation approval present'
+                      else: config.setdefault(key,set()).add(val)
+          for key, value in {'AUREA_ENVIRONMENT':'production','AUREA_SUPABASE_URL':'https://dlibifwlmbfkboerlmqd.supabase.co','AUREA_ADMIN_ALLOWED_ORIGIN':'https://aurea-puls-admin.netlify.app'}.items():
+              assert config.get(key)=={value}, 'Runtime configuration mismatch: '+key
+          import pathlib
+          configfile=pathlib.Path(os.environ['ROOT'])/'publish/puls-app/production-config.js'
+          public_config=json.loads(configfile.read_text().split('Object.freeze(',1)[1].rsplit(');',1)[0])
+          assert public_config['enabled'] is False and public_config['manager'] is False and public_config['employee'] is False
+          assert config.get('AUREA_SUPABASE_PUBLISHABLE_KEY')=={public_config['key']}
+          print('Existing target, rollback, runtime gates and public config verified.')
+          PY
