@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   final-admin-qa:
-    if: github.ref == 'refs/heads/commercial/step6-isolated'
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/commercial/step6-isolated'
     environment: aurea-staging-admin
     runs-on: ubuntu-24.04
     timeout-minutes: 8
@@ -29,4 +29,15 @@ jobs:
       - name: Staging HTTPS, Chromium and cleanup
         env:
           SUPABASE_ADMIN_DB_PASSWORD: ${{ secrets.SUPABASE_ADMIN_DB_PASSWORD }}
-        run: python3 architecture/commercial/admin-live-qa.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          curl --fail --silent --proto '=https' --max-time 20 'https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt' -o "$work/ca.crt"
+          fingerprint="$(openssl x509 -in "$work/ca.crt" -outform DER | sha256sum | cut -d ' ' -f 1)"
+          test "$fingerprint" = '807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa' || { echo 'FAIL CA fingerprint'; exit 1; }
+          echo 'PASS verified provider CA'
+          export AUREA_QA_CA="$work/ca.crt"
+          python3 architecture/commercial/admin-live-qa.py
