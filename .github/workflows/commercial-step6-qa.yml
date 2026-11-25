@@ -1,0 +1,46 @@
+name: Commercial step 6 isolated QA
+on:
+  push:
+    branches: [commercial/step6-isolated]
+    paths:
+      - 'architecture/commercial/**'
+      - '.github/workflows/commercial-step6-qa.yml'
+permissions:
+  contents: read
+jobs:
+  postgres-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: disposable_qa_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: disposable_qa_only
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create synthetic organization fixture
+        run: |
+          psql -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE ROLE service_role NOLOGIN;
+          CREATE SCHEMA aurea_private;
+          CREATE TABLE aurea_private.organizations(id uuid PRIMARY KEY, name text NOT NULL, created_at timestamptz DEFAULT now());
+          SQL
+      - name: Apply candidate in disposable database
+        run: psql -v ON_ERROR_STOP=1 -f architecture/commercial/step6-candidate.sql
+      - name: Run transaction tests
+        run: psql -v ON_ERROR_STOP=1 -f architecture/commercial/step6.synthetic.sql
