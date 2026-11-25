@@ -1,10 +1,10 @@
 'use strict';
-const {verifyPublic,verifyBrowser,assertActive}=require('./postgrest-runtime/production-runtime-gate.cjs');
+const {verifyPublic,verifyBrowser,assertBrowser}=require('./postgrest-runtime/production-runtime-gate.cjs');
 const {mountManagerLogin}=require('./manager-login-view.js');
 const {createManagerSignIn}=require('./manager-auth-provider.cjs');
 const {openAuthenticatedManager}=require('./manager-authenticated-entry.cjs');
-function bootManagerLogin({root,createClient,url,key,endpoint,fetchImpl}={}){
- verifyPublic({url,key});assertActive();
+function bootManagerLogin({root,createClient,config,url,key,endpoint,fetchImpl}={}){
+ verifyPublic({url,key});assertBrowser('manager',config);
  if(!root||typeof createClient!=='function'||typeof key!=='string'||!key.startsWith('sb_publishable_'))throw TypeError('Invalid production configuration');
  const parsed=new URL(url);
  if(parsed.protocol!=='https:'||parsed.hostname!=='dlibifwlmbfkboerlmqd.supabase.co'||parsed.username||parsed.password||parsed.pathname!=='/'||parsed.search||parsed.hash)throw TypeError('Invalid API URL');

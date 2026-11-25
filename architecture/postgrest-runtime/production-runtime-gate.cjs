@@ -12,4 +12,5 @@ function verifyBrowser(config) {
  return verifyPublic(config);
 }
 function assertActive(){throw Error('Production activation not approved');}
-module.exports=Object.freeze({verifyPublic,verifyBrowser,assertActive,activated:false});
+function assertBrowser(role,config){verifyBrowser(config);if(!['manager','employee'].includes(role)||config[role]!==true)throw Error('Role activation not approved');}
+module.exports=Object.freeze({verifyPublic,verifyBrowser,assertActive,assertBrowser,activated:false});

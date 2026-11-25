@@ -1,5 +1,5 @@
 'use strict';
-const {verifyPublic,verifyBrowser,assertActive}=require('./production-runtime-gate.cjs');
+const {verifyPublic,verifyBrowser,assertBrowser}=require('./production-runtime-gate.cjs');
 const {createManagerBridge}=require('../supabase-manager-bridge.cjs');
 const {createAuthorizedManagerService}=require('../manager-authorized-service.cjs');
 const BASE='https://dlibifwlmbfkboerlmqd.supabase.co';
@@ -7,15 +7,16 @@ const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function configured({url,key}={}){
  if(url!==BASE||typeof key!=='string'||!/^sb_publishable_[A-Za-z0-9_-]+$/.test(key))throw Error('Invalid production public configuration');
 }
-function createPostgrestTransport({url,key,fetchImpl=globalThis.fetch}={}){
+function createPostgrestTransport(config={}){
+ const {url,key,role,fetchImpl=globalThis.fetch}=config;
  configured({url,key});
- verifyPublic({url,key});assertActive();
+ verifyPublic({url,key});assertBrowser(role,config);
  const manager=createAuthorizedManagerService({bridge:createManagerBridge({url,key,fetchImpl})});
  const response=(status,body)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json','cache-control':'no-store'}});
  return async function transport(input,opts={}){
   if(typeof input!=='string')throw Error('Unexpected request');
-  if(input===BASE+'/rest/v1/rpc/aurea_my_companies'||input===BASE+'/auth/v1/user')return fetchImpl(input,opts);
-  if(input==='/api/employee/invitation'||input==='/api/employee/submit'){
+  if(role==='manager'&&(input===BASE+'/rest/v1/rpc/aurea_my_companies'||input===BASE+'/auth/v1/user'))return fetchImpl(input,opts);
+  if(role==='employee'&&(input==='/api/employee/invitation'||input==='/api/employee/submit')){
    if(opts.method!=='POST'||typeof opts.body!=='string'||opts.body.length>8192)return response(400,{status:'unavailable'});
    try{
     const x=JSON.parse(opts.body),action=input.endsWith('/submit')?'submit':'invitation';
@@ -29,7 +30,7 @@ function createPostgrestTransport({url,key,fetchImpl=globalThis.fetch}={}){
     return response(200,{status:'ready',questions:result.questions.map(({code,wording,position})=>({code,wording,position}))});
    }catch{return response(503,{status:'unavailable'})}
   }
-  if(input.startsWith('/api/manager-workspace?')){
+  if(role==='manager'&&input.startsWith('/api/manager-workspace?')){
    try{
     const parsed=new URL(input,'https://local.invalid'),ids=parsed.searchParams.getAll('organization_id');
     const auth=opts.headers?.authorization;

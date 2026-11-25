@@ -1,5 +1,5 @@
 'use strict';
-const {verifyPublic,verifyBrowser,assertActive}=require('./postgrest-runtime/production-runtime-gate.cjs');
+const {verifyPublic,verifyBrowser,assertBrowser}=require('./postgrest-runtime/production-runtime-gate.cjs');
 const {guide}=require('./signature22-guide.cjs');
 const {createEmployeeClient}=require('./employee-live-client.cjs');
 const {snapshot,renderPersonalInsights}=require('./employee-personal-insights.cjs');
@@ -15,8 +15,8 @@ function message(s){root.innerHTML='<div class="panel fade" role="status">'+safe
 async function start(){
  message('Učitavanje pitanja…');
  const cfg=globalThis.AUREA_PRODUCTION_CONFIG;
- verifyBrowser(cfg);assertActive();
- const transport=cfg?.transport==='postgrest'?require('./postgrest-runtime/production-browser-transport.cjs').createPostgrestTransport(cfg):undefined;
+ assertBrowser('employee',cfg);
+ const transport=cfg?.transport==='postgrest'?require('./postgrest-runtime/production-browser-transport.cjs').createPostgrestTransport({...cfg,role:'employee'}):undefined;
  const client=createEmployeeClient({token,fetchImpl:transport});const questions=await client.load();
  let step=0,busy=false;const answers=Object.create(null);
  function render(error=''){

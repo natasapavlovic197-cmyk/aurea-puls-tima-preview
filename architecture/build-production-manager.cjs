@@ -5,7 +5,8 @@ const esbuild=require('esbuild');
 const {premiumManager}=require('./premium-manager-template.cjs');
 const {premiumEmployee}=require('./premium-employee-template.cjs');
 async function main(){
- const cfg=require('./postgrest-runtime/production-public-config.cjs').createProductionPublicConfig({environment:process.env.AUREA_ENVIRONMENT,url:process.env.AUREA_SUPABASE_URL||null,key:process.env.AUREA_SUPABASE_PUBLISHABLE_KEY||null});
+ const permissions=require('./activation-candidate/policy.cjs').policy(process.env);
+ const cfg=require('./postgrest-runtime/production-public-config.cjs').createProductionPublicConfig({manager:permissions.manager,employee:permissions.employee,environment:process.env.AUREA_ENVIRONMENT,url:process.env.AUREA_SUPABASE_URL||null,key:process.env.AUREA_SUPABASE_PUBLISHABLE_KEY||null});
  const verdict=require('./postgrest-runtime/production-config.cjs').inspect(process.env);
  if(!verdict.configurationValid)throw Error('Production build configuration rejected');
  const out=path.resolve('dist-production-manager');
