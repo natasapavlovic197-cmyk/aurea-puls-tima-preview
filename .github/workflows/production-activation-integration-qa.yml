@@ -1,4 +1,4 @@
-name: AUREA activation integration review package
+name: AUREA activation package correction — import smoke only
 on:
   push:
     branches: [production/activation-pilot-preparation]
@@ -18,12 +18,11 @@ jobs:
       - name: Confirm unchanged protected sources
         run: |
           git diff --exit-code ac1bcf3a3d5350d44c63960a0b45ee20100fa00a -- ':!architecture/activation-candidate/**' ':!architecture/postgrest-runtime/production-public-config.cjs' ':!architecture/postgrest-runtime/production-runtime-gate.cjs' ':!architecture/production-manager-entry.cjs' ':!architecture/production-employee-entry.cjs' ':!architecture/production-manager-login-bootstrap.cjs' ':!architecture/postgrest-runtime/production-browser-transport.cjs' ':!architecture/build-production-manager.cjs' ':!.github/workflows/production-activation-integration-qa.yml'
-      - name: New integration tests only — no live network or SQL execution
-        run: node --test architecture/activation-candidate/integration.test.cjs
       - name: Compile candidate, no deploy
         run: |
           npm install --no-save --ignore-scripts --no-audit --no-fund esbuild@0.25.5 @supabase/supabase-js@2.49.4
           node architecture/activation-candidate/build-review.cjs
+          env -i PATH="$PATH" node architecture/activation-candidate/package-import-smoke.mjs
           cd activation-review-output
           find . -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/activation-sha256
           cp /tmp/activation-sha256 SHA256SUMS

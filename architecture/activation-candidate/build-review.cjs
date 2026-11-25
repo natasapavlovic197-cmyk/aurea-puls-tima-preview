@@ -13,7 +13,7 @@ const {renderHeaders}=require('./headers.cjs');
  fs.writeFileSync(path.join(out,'browser-overlay/_headers'),renderHeaders());
  await esbuild.build({...options,entryPoints:[path.join(__dirname,'private-admin-entry.cjs')],outfile:path.join(out,'private-admin/admin.bundle.js')});
  fs.copyFileSync(path.join(__dirname,'private-admin.html'),path.join(out,'private-admin/index.html'));fs.copyFileSync(path.join(__dirname,'admin.css'),path.join(out,'private-admin/admin.css'));
- for(const name of ['aurea-tick','aurea-job-background','aurea-admin'])await esbuild.build({entryPoints:[path.join(__dirname,'netlify-functions',name+'.mjs')],bundle:true,platform:'node',target:'node22',format:'esm',outfile:path.join(out,'server-functions',name+'.mjs')});
+ for(const name of ['aurea-tick','aurea-job-background','aurea-admin'])await esbuild.build({entryPoints:[path.join(__dirname,'netlify-functions',name+'.mjs')],bundle:true,platform:'node',target:'node22',format:'esm',banner:{js:'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);'},outfile:path.join(out,'server-functions',name+'.mjs')});
  for(const file of ['activation-gates.review.sql','activation-gates.rollback.sql','db-baseline-functions.json'])fs.copyFileSync(path.join(__dirname,file),path.join(out,'database',file));
  for(const file of ['INTEGRATION-REVIEW.md','README.md','netlify.toml.example'])fs.copyFileSync(path.join(__dirname,file),path.join(out,'docs',file));
  const config=fs.readFileSync(path.join(out,'browser-overlay/puls-app/production-config.js'),'utf8');
