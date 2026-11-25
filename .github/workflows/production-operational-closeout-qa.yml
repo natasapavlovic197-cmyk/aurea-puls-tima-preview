@@ -1,0 +1,36 @@
+name: AUREA operational closeout new checks only
+on:
+  push:
+    branches: [production/activation-pilot-preparation]
+    paths: ['.github/workflows/production-operational-closeout-qa.yml']
+permissions:
+  contents: read
+jobs:
+  closeout:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/production/activation-pilot-preparation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check only operational files changed since accepted SQL
+        run: |
+          git diff --exit-code 950ed6d9601c7662736644ccdc5b9e986309cdec -- ':!architecture/activation-candidate/admin-console.cjs' ':!architecture/activation-candidate/private-admin-entry.cjs' ':!architecture/activation-candidate/private-admin.html' ':!architecture/activation-candidate/netlify-functions/aurea-job-background.mjs' ':!architecture/activation-candidate/netlify-functions/aurea-admin.mjs' ':!architecture/activation-candidate/OPERATIONS-CLOSEOUT-2026-11-25.md' ':!architecture/operational-closeout.test.cjs' ':!.github/workflows/production-operational-closeout-qa.yml'
+      - name: New checks only, mocked
+        run: env -i PATH="$PATH" node --test architecture/operational-closeout.test.cjs
+      - name: Compile updated review output, no deploy
+        run: |
+          npm install --no-save --ignore-scripts --no-audit --no-fund esbuild@0.25.5 @supabase/supabase-js@2.49.4
+          node architecture/activation-candidate/build-review.cjs
+          cp architecture/activation-candidate/OPERATIONS-CLOSEOUT-2026-11-25.md activation-review-output/docs/
+          cd activation-review-output
+          find . -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/aurea-ops-sha
+          cp /tmp/aurea-ops-sha SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurea-operational-closeout-all-off
+          path: activation-review-output/
+          retention-days: 7
+          if-no-files-found: error
