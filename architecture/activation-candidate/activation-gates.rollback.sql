@@ -264,6 +264,7 @@ BEGIN
  RETURN jsonb_build_object('status',CASE WHEN v_result->>'status'='submitted' THEN 'submitted' ELSE 'unavailable' END);
 END $function$;
 DROP FUNCTION aurea_admin.require_activation_v1(text);
+DROP TABLE aurea_admin.activation_service_rights_v1;
 DROP TABLE aurea_admin.activation_operator_rights_v1;
 DROP TABLE aurea_admin.activation_gates_v1;
 COMMIT;

@@ -15,6 +15,13 @@ CREATE TABLE aurea_admin.activation_operator_rights_v1 (
 );
 ALTER TABLE aurea_admin.activation_operator_rights_v1 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON aurea_admin.activation_operator_rights_v1 FROM PUBLIC,anon,authenticated,service_role;
+CREATE TABLE aurea_admin.activation_service_rights_v1 (
+ user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+ role text NOT NULL UNIQUE CHECK (role IN ('scheduler','delivery')),
+ expires_at timestamptz NOT NULL
+);
+ALTER TABLE aurea_admin.activation_service_rights_v1 ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON aurea_admin.activation_service_rights_v1 FROM PUBLIC,anon,authenticated,service_role;
 CREATE FUNCTION aurea_admin.require_activation_v1(p_role text) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $guard$
 BEGIN
@@ -27,6 +34,18 @@ BEGIN
    SELECT 1 FROM aurea_admin.activation_operator_rights_v1 r JOIN aurea_admin.auth_operators o ON o.user_id=r.user_id
    WHERE r.user_id=auth.uid() AND r.role=p_role AND r.expires_at>clock_timestamp()
    AND o.enabled AND o.expires_at>clock_timestamp()
+  ) THEN RAISE EXCEPTION 'Access denied' USING ERRCODE='42501'; END IF;
+ ELSIF p_role IN ('scheduler','delivery') THEN
+  IF NOT EXISTS (
+   SELECT 1 FROM aurea_admin.activation_service_rights_v1 r
+   JOIN aurea_delivery_rpc.identities i ON i.user_id=r.user_id
+   JOIN auth.users u ON u.id=r.user_id
+   JOIN auth.sessions s ON s.user_id=r.user_id
+   WHERE r.user_id=auth.uid() AND r.role=p_role AND r.expires_at>clock_timestamp()
+   AND NOT u.is_anonymous AND u.deleted_at IS NULL
+   AND (u.banned_until IS NULL OR u.banned_until<=clock_timestamp())
+   AND s.id::text=auth.jwt()->>'session_id' AND (s.not_after IS NULL OR s.not_after>clock_timestamp())
+   AND (SELECT count(*) FROM aurea_delivery_rpc.scopes sc WHERE sc.user_id=r.user_id)<=1
   ) THEN RAISE EXCEPTION 'Access denied' USING ERRCODE='42501'; END IF;
  END IF;
 END $guard$;

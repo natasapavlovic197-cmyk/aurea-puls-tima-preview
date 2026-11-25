@@ -1,0 +1,7 @@
+# Candidate only. No continuous deployment or deploy command.
+# Copy to isolated assembly workspace only after owner approval.
+[build]
+  publish = "publish"
+  functions = "source/architecture/activation-candidate/netlify-functions"
+[functions]
+  node_bundler = "esbuild"
