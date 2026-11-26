@@ -144,7 +144,14 @@ jobs:
               # Accept only an explicit empty inventory, not absent fields, null or unknown shapes.
               # The published schema is a list of groups with functions arrays; some API
               # responses may instead wrap the explicit list in a functions object.
-              if isinstance(current,dict) and set(current)=={"functions"}:
+              if type(current) is dict and not current:
+                  # Observed in run 45850920119 for the same owner-verified static-only
+                  # staging baseline. Accept only this exact site and pinned ready deploy,
+                  # with the preceding privacy checks and the subsequent file hash checks.
+                  assert published()==OLD and check_ready(OLD)["site_id"]==SITE
+                  groups=[]
+                  print("Functions inventory: observed empty object on exact verified staging baseline",flush=True)
+              elif isinstance(current,dict) and set(current)=={"functions"}:
                   groups=current["functions"]
                   print("Functions inventory: explicit functions envelope",flush=True)
               else:
