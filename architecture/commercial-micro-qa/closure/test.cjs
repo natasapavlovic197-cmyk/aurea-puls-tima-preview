@@ -35,7 +35,14 @@ const answer=async(t,o=org)=>{const r=await rpc(t,o);assert.equal(r.status,200,a
  console.log('PASS real PostgREST signed JWT, default deny, two Micro roles, cross-tenant, forged/expired JWT and expired grant/session');
  const fn=await import(pathToFileURL(path.join(stage,'server-functions/aurea-education.mjs')));
  assert.equal(fn.config.path,'/api/education');
- const fixtureOrigin='https://qa-aurea.example.invalid';
+ const https=require('node:https'),os=require('node:os');
+ const tls=fs.mkdtempSync(path.join(os.tmpdir(),'aurea-closure-tls-'));
+ cp.execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1','-keyout',path.join(tls,'key.pem'),'-out',path.join(tls,'cert.pem')],{stdio:'ignore'});
+ const host=https.createServer({key:fs.readFileSync(path.join(tls,'key.pem')),cert:fs.readFileSync(path.join(tls,'cert.pem'))});
+ fs.rmSync(tls,{recursive:true,force:true});
+ await new Promise((resolve,reject)=>{host.once('error',reject);host.listen(0,'127.0.0.1',resolve)});
+ host.unref();
+ const fixtureOrigin='https://127.0.0.1:'+host.address().port;
  process.env.AUREA_ENVIRONMENT='staging';process.env.AUREA_SUPABASE_URL=cfg.url;process.env.AUREA_SUPABASE_PUBLISHABLE_KEY=cfg.key;process.env.AUREA_STAGE_EDUCATION_ORIGIN=fixtureOrigin;
  const req=(t=token(),o=org,origin=fixtureOrigin)=>new Request(fixtureOrigin+'/api/education',{method:'POST',headers:{origin,authorization:'Bearer '+t,'content-type':'application/json'},body:JSON.stringify({organizationId:o})});
  assert.equal((await fn.default(req())).status,403);
@@ -47,26 +54,36 @@ const answer=async(t,o=org)=>{const r=await rpc(t,o);assert.equal(r.status,200,a
  const csp=fs.readFileSync(path.join(pub,'_headers'),'utf8').split('\n\n').find(b=>b.startsWith('/puls-app/edukacija/*\n')).split('\n').find(x=>x.includes('Content-Security-Policy:')).split('Content-Security-Policy: ')[1];
  const redirects=fs.readFileSync(path.join(pub,'_redirects'),'utf8');assert.match(redirects,/\/signature-education\.html \/puls-app\/edukacija\/ 302!/);
  assert.ok(!fs.existsSync(path.join(pub,'signature-education.html')));
- const browser=await chromium.launch({headless:true,executablePath:process.env.QA_CHROME,args:['--no-sandbox']});
+ // Serve actual compiled bytes over loopback HTTPS, including CSP and redirects. Never resolve an invented external host.
+ host.on('request',async(req,res)=>{
+  try{
+   const u=new URL(req.url,fixtureOrigin);
+   const rule=redirects.split('\n').map(x=>x.trim().split(/\s+/)).find(x=>x[0]===u.pathname&&x[2]==='302!');
+   if(rule){res.writeHead(302,{location:rule[1],'cache-control':'no-store'});res.end();return;}
+   if(u.pathname==='/api/education'){
+    let body='';for await(const chunk of req){body+=chunk;if(body.length>1024){res.writeHead(413);res.end();return;}}
+    const resp=await fn.default(new Request(u,{method:req.method,headers:req.headers,body}));
+    res.writeHead(resp.status,Object.fromEntries(resp.headers));res.end(Buffer.from(await resp.arrayBuffer()));return;
+   }
+   let rel=u.pathname.slice(1);if(rel.endsWith('/'))rel+='index.html';const f=path.resolve(pub,rel);
+   if(!f.startsWith(pub+path.sep)||!fs.existsSync(f)||!fs.statSync(f).isFile()){res.writeHead(404);res.end();return;}
+   const typ=f.endsWith('.js')?'application/javascript':f.endsWith('.css')?'text/css':'text/html; charset=utf-8';
+   let body=fs.readFileSync(f);
+   if(f===configPath)body=Buffer.from('globalThis.AUREA_EDUCATION_CONFIG=Object.freeze('+JSON.stringify({...cfg,origin:fixtureOrigin,enabled:true})+');');
+   res.writeHead(200,{'content-type':typ,'content-security-policy':csp,'cache-control':'no-store','referrer-policy':'no-referrer'});res.end(body);
+  }catch(e){console.error('Fixture handler:',e.message);if(!res.headersSent)res.writeHead(500);res.end();}
+ });
+ const browser=await chromium.launch({headless:true,executablePath:process.env.QA_CHROME,args:['--no-sandbox','--host-resolver-rules=MAP *.supabase.co 127.0.0.1, EXCLUDE localhost']});
  try{
- const ctx=await browser.newContext({viewport:{width:390,height:844}});const page=await ctx.newPage();const unexpected=[];
+ const ctx=await browser.newContext({viewport:{width:390,height:844},ignoreHTTPSErrors:true});const page=await ctx.newPage();const unexpected=[];
  await ctx.route('**/*',async route=>{
   const rq=route.request(),u=new URL(rq.url());
+  if(u.origin===fixtureOrigin)return route.continue();
   if(u.origin===cfg.url&&rq.method()==='OPTIONS')return route.fulfill({status:204,headers:{'access-control-allow-origin':fixtureOrigin,'access-control-allow-methods':'POST,GET,OPTIONS','access-control-allow-headers':'*'}});
   if(u.origin===cfg.url&&u.pathname==='/auth/v1/token'){
    const b=rq.postDataJSON();assert.equal(b.email,'qa-employee@example.invalid');return route.fulfill({status:200,headers:{'access-control-allow-origin':fixtureOrigin,'content-type':'application/json'},json:{access_token:token(),refresh_token:'synthetic-refresh',token_type:'bearer',expires_in:600,user:{id:employee,aud:'authenticated',role:'authenticated',email:'qa-employee@example.invalid',created_at:new Date().toISOString(),app_metadata:{},user_metadata:{}}}});
   }
-  if(u.origin!==fixtureOrigin){unexpected.push(u.origin+u.pathname);return route.abort();}
-  if(u.pathname==='/api/education'){
-   const h=rq.headers();const resp=await fn.default(new Request(rq.url(),{method:'POST',headers:h,body:rq.postData()}));return route.fulfill({status:resp.status,headers:Object.fromEntries(resp.headers),body:await resp.text()});
-  }
-  if(u.pathname==='/signature-education.html')return route.fulfill({status:302,headers:{location:'/puls-app/edukacija/','cache-control':'no-store'}});
-  let rel=u.pathname.slice(1);if(rel.endsWith('/'))rel+='index.html';const f=path.join(pub,rel);
-  if(!f.startsWith(pub+path.sep)||!fs.existsSync(f)||!fs.statSync(f).isFile())return route.fulfill({status:404});
-  const typ=f.endsWith('.js')?'application/javascript':f.endsWith('.css')?'text/css':'text/html; charset=utf-8';
-  let body=fs.readFileSync(f);
-  if(f===configPath)body=Buffer.from('globalThis.AUREA_EDUCATION_CONFIG=Object.freeze('+JSON.stringify({...cfg,origin:fixtureOrigin,enabled:true})+');');
-  return route.fulfill({status:200,headers:{'content-type':typ,'content-security-policy':csp,'cache-control':'no-store','referrer-policy':'no-referrer'},body});
+  unexpected.push(u.origin+u.pathname);return route.abort();
  });
  await page.goto(fixtureOrigin+'/signature-education.html');assert.equal(new URL(page.url()).pathname,'/puls-app/edukacija/');
  await page.locator('#org').fill(org);await page.locator('#email').fill('qa-employee@example.invalid');await page.locator('#password').fill('fixture-password');await page.locator('#submit').click();
@@ -76,5 +93,5 @@ const answer=async(t,o=org)=>{const r=await rpc(t,o);assert.equal(r.status,200,a
  assert.ok(await frame.locator('[data-wp-scene]').count()>0);
  await frame.locator('[data-wp-scene]').first().click();await frame.locator('#exercise').waitFor({state:'visible'});await frame.locator('#exercise-back').click();await frame.locator('#scenario-hub').waitFor({state:'visible'});
  assert.deepEqual(unexpected,[]);await ctx.close();console.log('PASS actual compiled education browser, forced alias, CSP, sandbox and locked scenario navigation (synthetic Auth issuer, real PostgREST authorization)');
- }finally{await browser.close();global.fetch=originalFetch;}
+ }finally{await browser.close();host.closeAllConnections();await new Promise(r=>host.close(r));global.fetch=originalFetch;}
 })().catch(e=>{console.error(e);process.exitCode=1});
