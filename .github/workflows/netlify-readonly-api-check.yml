@@ -10,12 +10,12 @@ jobs:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/qa/commercial-micro-20261126' && github.actor == 'natasapavlovic197-cmyk'
     runs-on: ubuntu-24.04
     timeout-minutes: 3
-    environment: aurea-netlify-luminous-readonly
+    environment: aurea-staging-admin
     steps:
       - name: GET only - exact staging site and rollback
         shell: bash
         env:
-          NETLIFY_LUMINOUS_READ_TOKEN: ${{ secrets.NETLIFY_LUMINOUS_READ_TOKEN }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -23,7 +23,7 @@ jobs:
           SITE = "07df56d5-e7d6-40a4-b8ab-97b19e1760f7"
           NAME = "luminous-hamster-ec0a1c"
           DEPLOY = "6b035cb77e69d061dba7e1d9"
-          TOKEN = os.environ.get("NETLIFY_LUMINOUS_READ_TOKEN", "")
+          TOKEN = os.environ.get("NETLIFY_AUTH_TOKEN", "")
           if not TOKEN.strip():
               sys.exit("BLOCKED: missing protected environment secret")
           class NoRedirect(urllib.request.HTTPRedirectHandler):
