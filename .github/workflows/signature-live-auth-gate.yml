@@ -1,0 +1,111 @@
+name: AUREA final live staging QA - isolated licences and roles
+on:
+  push:
+    branches: [integration/employee-ten-domains-step5]
+    paths: ['.github/workflows/signature-live-auth-gate.yml']
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: aurea-staging-isolated-signature-auth
+  cancel-in-progress: false
+jobs:
+  live-auth:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5' && github.actor == 'natasapavlovic197-cmyk' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: aurea-staging-admin
+    steps:
+      - name: Verify staging TLS and run real Auth with expiring isolated licences
+        shell: bash
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_ADMIN_DB_PASSWORD }}
+          QA_PASSWORD: ${{ secrets.AUREA_MANAGER_QA_PASSWORD }}
+          QA_KEY: ${{ vars.AUREA_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          curl --fail --silent --show-error --proto '=https' --max-time 20 'https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt' -o "$work/ca.crt"
+          test "$(openssl x509 -in "$work/ca.crt" -outform DER | sha256sum | cut -d ' ' -f 1)" = '807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa'
+          export PGHOST=aws-1-eu-west-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGUSER=postgres.ublzmoroanhlcgpnxilw PGSSLMODE=verify-full PGSSLROOTCERT="$work/ca.crt" PGCONNECT_TIMEOUT=12 PGAPPNAME=aurea_signature_isolated_live_qa
+          export PGOPTIONS='-c statement_timeout=8000 -c lock_timeout=4000'
+          cat > "$work/qa.cjs" <<'JS'
+          'use strict';
+          const assert=require('node:assert/strict'),{spawnSync}=require('node:child_process');
+          const base='https://ublzmoroanhlcgpnxilw.supabase.co', email='aurea-manager-qa@example.invalid', uid='adc64a06-f1fa-43be-970c-4441eb0ceebb';
+          const A='a27e7c11-4f61-4a92-9b27-202611270001', B='a27e7c11-4f61-4a92-9b27-202611270002', C='a27e7c11-4f61-4a92-9b27-202611270003', X='a27e7c11-4f61-4a92-9b27-202611270009';
+          const ids=[A,B,C], inIds=ids.map(x=>"'"+x+"'::uuid").join(',');
+          const names=['AUREA RC QA 20261127 Micro owner','AUREA RC QA 20261127 Workplace owner','AUREA RC QA 20261127 Workplace employee'];
+          const key=process.env.QA_KEY,password=process.env.QA_PASSWORD;
+          let phase='config',token=null,seeded=false;
+          function sql(query){
+            const out=spawnSync('psql',['-X','-w','-qAt','-v','ON_ERROR_STOP=1'],{input:query,encoding:'utf8',timeout:25000,env:process.env});
+            if(out.status!==0)throw Error('SQL failed in '+phase);
+            return out.stdout.trim();
+          }
+          const guard="DO $$ BEGIN IF current_database()<>'postgres' OR current_user<>'postgres' OR to_regclass('aurea_admin.activation_gates_v1') IS NOT NULL OR to_regclass('aurea_admin.education_stage_grants_v1') IS NULL THEN RAISE EXCEPTION 'not staging'; END IF; END $$;";
+          const cleanup=()=>{
+            const matched="SELECT id FROM aurea_private.organizations WHERE id IN ("+inIds+") AND name IN ("+names.map(x=>"'"+x+"'").join(',')+")";
+            sql("BEGIN;"+guard+"DELETE FROM aurea_admin.education_stage_grants_v1 WHERE organization_id IN ("+matched+"); DELETE FROM aurea_delivery_rpc.active_recipients WHERE organization_id IN ("+matched+"); DELETE FROM aurea_private.memberships WHERE organization_id IN ("+matched+"); DELETE FROM aurea_commercial.accounts WHERE organization_id IN ("+matched+"); DELETE FROM aurea_private.organizations WHERE id IN ("+matched+"); COMMIT;");
+            assert.equal(sql("SELECT count(*) FROM aurea_private.organizations WHERE id IN ("+inIds+");"),'0');
+          };
+          async function request(path,body,bearer){
+            const headers={apikey:key,'content-type':'application/json'};
+            if(bearer)headers.authorization='Bearer '+bearer;
+            const r=await fetch(base+path,{method:'POST',headers,body:JSON.stringify(body),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(10000)});
+            let data=null; if(r.status!==204)try{data=await r.json()}catch{}
+            return {status:r.status,data};
+          }
+          const rpc=(name,body,auth=token)=>request('/rest/v1/rpc/'+name,body,auth);
+          const success=async(name,body)=>{const r=await rpc(name,body);assert.equal(r.status,200);return r.data};
+          const denied=r=>assert([401,403].includes(r.status));
+          async function main(){
+            assert.match(key||'',/^sb_publishable_[\w-]+$/);assert(password&&password.length>=16);assert(process.env.PGPASSWORD);
+            try{
+              phase='staging-empty-fixture-preflight';
+              const pre=JSON.parse(sql("BEGIN READ ONLY; SELECT json_build_object('staging',to_regclass('aurea_admin.activation_gates_v1') IS NULL,'identity',(SELECT count(*) FROM auth.users WHERE id='"+uid+"' AND email='"+email+"' AND email_confirmed_at IS NOT NULL AND deleted_at IS NULL AND NOT is_anonymous),'existing',(SELECT count(*) FROM aurea_private.organizations WHERE id IN ("+inIds+")),'grants',(SELECT count(*) FROM aurea_admin.education_stage_grants_v1),'accounts',(SELECT count(*) FROM aurea_commercial.accounts),'invoices',(SELECT count(*) FROM aurea_commercial.invoices),'scopes',(SELECT count(*) FROM aurea_delivery_rpc.scopes),'jobs',(SELECT count(*) FROM aurea_private.weekly_delivery_jobs)); ROLLBACK;"));
+              assert.deepEqual(pre,{staging:true,identity:1,existing:0,grants:0,accounts:0,invoices:0,scopes:0,jobs:0});
+              phase='real-password-auth';
+              const a=await request('/auth/v1/token?grant_type=password',{email,password});
+              assert.equal(a.status,200);assert.equal(a.data.user.id,uid);assert(typeof a.data.access_token==='string'&&a.data.access_token.length>100);
+              token=a.data.access_token;
+              const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString());
+              assert.equal(claims.sub,uid);assert.equal(claims.role,'authenticated');assert(typeof claims.session_id==='string');
+              const original=await success('aurea_my_companies',{});
+              assert(Array.isArray(original)&&original.length===1&&original[0].member_role==='manager');
+              phase='isolated-fixture-seed';
+              const orgs=ids.map((id,i)=>"('"+id+"','"+names[i]+"')").join(',');
+              const accts=ids.map((id,i)=>"('"+id+"',"+[3,6,5][i]+",now()-interval '30 days'+interval '15 minutes',now()+interval '15 minutes',false,false)").join(',');
+              const roster=[B,C].flatMap(id=>[email,...Array.from({length:4},(_,i)=>'aurea-rc-qa-'+i+'@example.invalid')].map(e=>"('"+id+"','"+e+"',true)")).join(',');
+              const grants=ids.map((id,i)=>"('"+uid+"','"+id+"','"+(i===2?'employee':'manager')+"',clock_timestamp()+interval '15 minutes')").join(',');
+              sql("BEGIN;"+guard+"INSERT INTO aurea_private.organizations(id,name) VALUES "+orgs+"; INSERT INTO aurea_commercial.accounts(organization_id,seats,trial_start,trial_end,complimentary,renewal_enabled) VALUES "+accts+"; INSERT INTO aurea_private.memberships(organization_id,user_id,role) VALUES ('"+A+"','"+uid+"','owner'),('"+B+"','"+uid+"','owner'); INSERT INTO aurea_delivery_rpc.active_recipients(organization_id,email,active) VALUES "+roster+"; INSERT INTO aurea_admin.education_stage_grants_v1(user_id,organization_id,member_role,expires_at) VALUES "+grants+"; COMMIT;");
+              seeded=true;
+              phase='owner-and-employee-entitlements';
+              const companies=await success('aurea_my_companies',{});
+              assert.equal(companies.length,3);assert(companies.some(x=>x.organization_id===A&&x.member_role==='owner'));assert(companies.some(x=>x.organization_id===B&&x.member_role==='owner'));assert(!companies.some(x=>x.organization_id===C));
+              const micro=await success('aurea_owner_portal_v1',{p_org:A});
+              assert.equal(micro.organization_id,A);assert.equal(micro.status,'trial');assert.equal(micro.seats,3);assert.equal(micro.licensed_count,1);assert.equal(micro.pulse_eligible,false);assert.deepEqual(micro.documents,[]);
+              const workplace=await success('aurea_owner_portal_v1',{p_org:B});
+              assert.equal(workplace.organization_id,B);assert.equal(workplace.status,'trial');assert.equal(workplace.seats,6);assert.equal(workplace.licensed_count,5);assert.equal(workplace.pulse_eligible,true);assert.deepEqual(workplace.documents,[]);
+              for(const id of ids)assert.equal(await success('aurea_education_access_v1',{p_org:id}),true);
+              assert.equal(await success('aurea_education_access_v1',{p_org:X}),false);
+              denied(await rpc('aurea_owner_portal_v1',{p_org:C}));denied(await rpc('aurea_owner_portal_v1',{p_org:X}));
+              denied(await rpc('aurea_owner_portal_v1',{p_org:A},null));
+              phase='seat-cap-and-anonymity';
+              const checks=JSON.parse(sql("SELECT json_build_object('micro',aurea_commercial.pulse_eligible_v1('"+A+"'),'workplace',aurea_commercial.pulse_eligible_v1('"+B+"'),'employee',aurea_commercial.pulse_eligible_v1('"+C+"'),'four',aurea_private.privacy_publishable_v1(4,2,4),'five',aurea_private.privacy_publishable_v1(5,2,5),'sparse',aurea_private.privacy_publishable_v1(5,4,5),'jobs',(SELECT count(*) FROM aurea_private.weekly_delivery_jobs));"));
+              assert.deepEqual(checks,{micro:false,workplace:true,employee:true,four:false,five:true,sparse:false,jobs:0});
+              phase='expired-grant';
+              sql("UPDATE aurea_admin.education_stage_grants_v1 SET created_at=clock_timestamp()-interval '2 minutes',expires_at=clock_timestamp()-interval '1 minute' WHERE user_id='"+uid+"' AND organization_id='"+C+"';");
+              assert.equal(await success('aurea_education_access_v1',{p_org:C}),false);
+              console.log('PASS real password authentication, Micro owner and Workplace owner/employee scope, licence and privacy gates, cross-organization denial and expired grant');
+            } finally {
+              let error=false;
+              if(token){try{const l=await request('/auth/v1/logout?scope=local',{},token);assert([200,204].includes(l.status));console.log('PASS local QA session sign-out');}catch{error=true}}
+              if(seeded){try{cleanup();console.log('PASS isolated fixture cleanup: zero remaining QA organizations');}catch{error=true}}
+              if(error)throw Error('cleanup unconfirmed');
+            }
+          }
+          main().catch(()=>{console.error('BLOCKED: '+phase+' or cleanup; no deployment');process.exitCode=1});
+          JS
+          node "$work/qa.cjs"
