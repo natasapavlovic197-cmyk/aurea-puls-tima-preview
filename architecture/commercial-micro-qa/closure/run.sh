@@ -12,7 +12,8 @@ trap cleanup EXIT
 python3 "$HERE/prepare.py" "$RC"
 npm install --prefix "$W/deps" --no-save --ignore-scripts --no-audit --no-fund esbuild@0.25.5 @supabase/supabase-js@2.49.4 playwright-core@1.51.1
 ln -s "$W/deps/node_modules" "$SRC/node_modules"
-printf '\n/node_modules\n' >> "$SRC/.git/info/exclude"
+exclude=$(git -C "$SRC" rev-parse --path-format=absolute --git-path info/exclude)
+printf '\n/node_modules\n' >> "$exclude"
 node "$HERE/build.cjs" "$SRC" "$RC" "$OUT"
 docker pull postgres:17
 docker pull postgrest/postgrest:v12.2.3
