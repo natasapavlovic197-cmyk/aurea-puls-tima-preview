@@ -1,66 +1,57 @@
-name: AUREA P3 real temporary manager QA (approval required)
+name: AUREA Luminous Hamster - read-only authorization
 on:
   workflow_dispatch:
-permissions:
-  contents: read
+permissions: {}
 concurrency:
-  group: aurea-staging-admin-login
+  group: aurea-luminous-hamster-readonly
   cancel-in-progress: false
 jobs:
-  manager:
-    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5'
-    environment: aurea-staging-admin
+  read-only:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5' && github.actor == 'natasapavlovic197-cmyk'
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 3
+    environment: aurea-staging-admin
     steps:
-      - name: Temporary manager authentication and cleanup
+      - name: GET only - exact staging site and rollback
+        shell: bash
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          const assert=require('node:assert/strict'),crypto=require('node:crypto');
-          const root='https://api.supabase.com/v1/projects/ublzmoroanhlcgpnxilw',base='https://ublzmoroanhlcgpnxilw.supabase.co',preview='https://6b05ae6085a89d61d80cada8--aurea-puls-tima-preview.netlify.app',pub='sb_publishable_Za18LIyl1qfx2Tlucyj3Xg_CSWRukS6';
-          const pat=process.env.SUPABASE_ACCESS_TOKEN,email='qa-manager-'+crypto.randomUUID()+'@example.invalid',pw=crypto.randomBytes(32).toString('hex')+'Aa9!';
-          let uid=null,org=null,jwt=null,admin=null,phase='guard',attempted=false;
-          const mask=s=>console.log('::add-mask::'+s);
-          const uuid=s=>typeof s==='string'&&/^[a-f0-9-]{36}$/.test(s);
-          async function req(url,method,headers,body){return fetch(url,{method,headers:{...headers,...(body===undefined?{}:{'content-type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(20000)})}
-          async function json(url,method,headers,body){const r=await req(url,method,headers,body);if(!r.ok){await r.body?.cancel();throw Error('HTTP '+r.status)}return r.json()}
-          const mg={authorization:'Bearer '+pat};
-          const sql=q=>json(root+'/database/query','POST',mg,{query:q});
-          const auth=()=>({apikey:admin,...(admin.startsWith('sb_secret_')?{}:{authorization:'Bearer '+admin})});
-          (async()=>{
-          try{
-          assert.equal(process.env.GITHUB_REPOSITORY,'natasapavlovic197-cmyk/aurea-puls-tima-preview');assert.equal(process.env.GITHUB_REF,'refs/heads/integration/employee-ten-domains-step5');assert.ok(pat);
-          const p=await json(root,'GET',mg);assert.equal(p.name,'aurea-puls-staging');assert.equal(p.ref||p.id,'ublzmoroanhlcgpnxilw');
-          const rows=await sql("select id from aurea_private.organizations where name='AUREA DEMO'");assert.equal(rows.length,1);assert.ok(uuid(rows[0].id));org=rows[0].id;
-          assert.deepEqual(await sql("select count(*)::int as n from aurea_private.invitations i join aurea_private.cycles c on c.id=i.cycle_id where c.organization_id='"+org+"' and i.recipient_address not like '%@example.invalid'"),[{n:0}]);
-          const page=await req(preview+'/','GET',{});assert.equal(page.status,200);assert.match(await page.text(),/manager-login.bundle.js/);console.log('PASS exact staging project, demo organization and deployed login shell');
-          phase='admin authorization';
-          const keys=await json(root+'/api-keys?reveal=true','GET',mg);assert.ok(Array.isArray(keys));
-          const k=keys.find(x=>x.type==='secret'&&typeof x.api_key==='string'&&x.api_key.startsWith('sb_secret_'))||keys.find(x=>x.name==='service_role'&&typeof x.api_key==='string');
-          assert.ok(k?.api_key);admin=k.api_key;mask(admin);mask(pw);
-          phase='temporary user creation';attempted=true;
-          const u=await json(base+'/auth/v1/admin/users','POST',auth(),{email,password:pw,email_confirm:true});assert.ok(uuid(u.id));uid=u.id;assert.equal(u.email,email);
-          console.log('QA_CLEANUP_ID '+uid);
-          await sql("insert into aurea_private.memberships(organization_id,user_id,role) values ('"+org+"','"+uid+"','manager')");
-          console.log('PASS temporary confirmed manager scoped to demo only');
-          phase='actual login';
-          const session=await json(base+'/auth/v1/token?grant_type=password','POST',{apikey:pub},{email,password:pw});assert.equal(session.user.id,uid);assert.ok(session.access_token);jwt=session.access_token;mask(jwt);if(session.refresh_token)mask(session.refresh_token);
-          const headers={apikey:pub,authorization:'Bearer '+jwt};
-          const companies=await json(base+'/rest/v1/rpc/aurea_my_companies','POST',headers,{});assert.ok(Array.isArray(companies)&&companies.length===1&&companies[0].id===org||Array.isArray(companies)&&companies.length===1&&companies[0].organization_id===org);console.log('PASS real password login and single company authorization');
-          phase='manager publications';
-          const report=await json(base+'/rest/v1/rpc/aurea_manager_publications_v2','POST',headers,{p_organization_id:org});assert.ok(report!==null);console.log('PASS authorized live publications RPC (no data printed)');
-          const denied=await req(base+'/rest/v1/rpc/aurea_manager_publications_v2','POST',headers,{p_organization_id:crypto.randomUUID()});assert.ok([401,403].includes(denied.status));await denied.body?.cancel();console.log('PASS unauthorized organization denied');
-          phase='logout';const logout=await req(base+'/auth/v1/logout?scope=global','POST',headers);assert.ok(logout.ok);await logout.body?.cancel();console.log('PASS logout');
-          }finally{
-          if(attempted){
-          if(!uid){const r=await sql("select id from auth.users where email='"+email+"'");assert.ok(r.length<=1);if(r.length){assert.ok(uuid(r[0].id));uid=r[0].id;}}
-          if(uid){if(jwt){try{const r=await req(base+'/auth/v1/logout?scope=global','POST',{apikey:pub,authorization:'Bearer '+jwt});await r.body?.cancel()}catch{}}
-          await sql("delete from aurea_private.memberships where user_id='"+uid+"' and organization_id='"+org+"'");
-          const del=await req(base+'/auth/v1/admin/users/'+uid,'DELETE',auth());if(!del.ok&&del.status!==404)throw Error('cleanup HTTP '+del.status);await del.body?.cancel();
-          const r=await sql("select (select count(*)::int from auth.users where id='"+uid+"') as users,(select count(*)::int from auth.sessions where user_id='"+uid+"') as sessions,(select count(*)::int from aurea_private.memberships where user_id='"+uid+"') as memberships");assert.deepEqual(r,[{users:0,sessions:0,memberships:0}]);console.log('PASS temporary user, sessions and membership removed');}
-          }}
-          })().catch(e=>{console.error('BLOCKED '+phase+'; '+(/^HTTP [0-9]+$/.test(e.message)?e.message:'sanitized failure'));process.exitCode=1});
-          NODE
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+          SITE = "07df56d5-e7d6-40a4-b8ab-97b19e1760f7"
+          NAME = "luminous-hamster-ec0a1c"
+          DEPLOY = "6b035cb77e69d061dba7e1d9"
+          TOKEN = os.environ.get("NETLIFY_AUTH_TOKEN", "")
+          if not TOKEN.strip():
+              sys.exit("BLOCKED: missing protected environment secret")
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener = urllib.request.build_opener(NoRedirect())
+          def get(path):
+              req = urllib.request.Request("https://api.netlify.com/api/v1" + path,
+                  headers={"Authorization": "Bearer " + TOKEN, "Accept": "application/json"}, method="GET")
+              try:
+                  with opener.open(req, timeout=20) as response:
+                      if response.status != 200:
+                          sys.exit("BLOCKED: unexpected HTTP status")
+                      return json.loads(response.read(2_000_000))
+              except urllib.error.HTTPError as e:
+                  sys.exit("BLOCKED: Netlify API HTTP " + str(e.code))
+              except Exception:
+                  sys.exit("BLOCKED: API transport or response error")
+          site = get("/sites/" + SITE)
+          if site.get("id") != SITE or site.get("name") != NAME:
+              sys.exit("BLOCKED: staging site identity mismatch")
+          if (site.get("published_deploy") or {}).get("id") != DEPLOY:
+              sys.exit("BLOCKED: published deployment has changed or cannot be confirmed")
+          deploy = get("/sites/" + SITE + "/deploys/" + DEPLOY)
+          if deploy.get("id") != DEPLOY or deploy.get("site_id") != SITE or deploy.get("state") != "ready":
+              sys.exit("BLOCKED: rollback deployment identity or state mismatch")
+          print("PASS: authenticated read-only Netlify GETs; exact staging site and current ready deploy")
+          print("Site ID:", SITE)
+          print("Published deploy:", DEPLOY)
+          print("NOTE: host privacy and billing must still be confirmed in Netlify UI; no write or deploy attempted.")
+          PY
