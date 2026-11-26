@@ -10,7 +10,8 @@ r=root/'database/micro.rollback.sql'
 anchor="-- Educational access adapter."
 scope="""-- Staging-only, private, explicitly scoped, empty/default deny. No production gate replacement.
 DO $stage_scope$ BEGIN
- IF to_regprocedure('aurea_admin.require_activation_v1(text)') IS NULL THEN
+ IF (to_regclass('aurea_admin.activation_gates_v1') IS NULL) IS DISTINCT FROM (to_regprocedure('aurea_admin.require_activation_v1(text)') IS NULL) THEN RAISE EXCEPTION 'Activation baseline mismatch'; END IF;
+ IF to_regclass('aurea_admin.activation_gates_v1') IS NULL THEN
   CREATE TABLE aurea_admin.education_stage_grants_v1(
     user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     organization_id uuid NOT NULL REFERENCES aurea_private.organizations(id) ON DELETE CASCADE,
@@ -27,7 +28,8 @@ END $stage_scope$;
 """
 patch(m,anchor,scope+anchor)
 patch(m," -- Fail closed if the production activation gate is absent (including current staging).\n IF to_regprocedure('aurea_admin.require_activation_v1(text)') IS NULL THEN RETURN false; END IF;\n PERFORM aurea_admin.require_activation_v1(CASE WHEN is_manager THEN 'manager' ELSE 'employee' END);",""" -- Production always uses its existing gate; staging requires an explicit expiring test grant.
- IF to_regprocedure('aurea_admin.require_activation_v1(text)') IS NOT NULL THEN
+ IF (to_regclass('aurea_admin.activation_gates_v1') IS NULL) IS DISTINCT FROM (to_regprocedure('aurea_admin.require_activation_v1(text)') IS NULL) THEN RETURN false; END IF;
+ IF to_regclass('aurea_admin.activation_gates_v1') IS NOT NULL THEN
   PERFORM aurea_admin.require_activation_v1(CASE WHEN is_manager THEN 'manager' ELSE 'employee' END);
  ELSE
   IF to_regclass('aurea_admin.education_stage_grants_v1') IS NULL THEN RETURN false; END IF;

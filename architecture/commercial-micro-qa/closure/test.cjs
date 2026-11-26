@@ -1,8 +1,8 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),cp=require('node:child_process'),{pathToFileURL}=require('node:url');
 const {chromium}=require('playwright-core');
-const out=path.resolve(process.argv[2]),db=process.env.QA_DB,rest='http://127.0.0.1:54321',secret=process.env.QA_JWT_SECRET;
-assert.ok(db?.startsWith('aurea-closure-')&&secret?.length>=32);
+const out=path.resolve(process.argv[2]),db=process.env.QA_DB,rest='http://'+process.env.QA_REST+':3000',probe=process.env.QA_PROBE,secret=process.env.QA_JWT_SECRET;
+assert.ok(db?.startsWith('aurea-closure-')&&probe?.startsWith('aurea-closure-probe-')&&/^http:\/\/aurea-closure-rest-\d+:3000$/.test(rest)&&secret?.length>=32);
 const stage=path.join(out,'staging'),pub=path.join(stage,'publish'),org='00000000-0000-4000-8000-000000000011',other='00000000-0000-4000-8000-000000000012';
 const employee='00000000-0000-4000-8000-000000000021',manager='00000000-0000-4000-8000-000000000022',sid='00000000-0000-4000-8000-000000000031',msid='00000000-0000-4000-8000-000000000032';
 const configPath=path.join(pub,'puls-app/edukacija/education-config.js');
@@ -10,13 +10,23 @@ const cfg=JSON.parse(fs.readFileSync(configPath,'utf8').match(/Object\.freeze\((
 const json=x=>Buffer.from(JSON.stringify(x)).toString('base64url');
 const token=(sub=employee,session_id=sid,exp=Math.floor(Date.now()/1000)+600,role='authenticated')=>{const s=json({alg:'HS256',typ:'JWT'})+'.'+json({sub,session_id,role,aud:'authenticated',exp,iat:Math.floor(Date.now()/1000)});return s+'.'+crypto.createHmac('sha256',secret).update(s).digest('base64url')};
 const sql=s=>cp.execFileSync('docker',['exec','-i',db,'psql','-X','-v','ON_ERROR_STOP=1','-U','postgres','-d','aurea_fixture','-c',s],{encoding:'utf8'});
-const raw=global.fetch;
+const originalFetch=global.fetch;
+const raw=async(url,opts={})=>{
+ assert.equal(String(url),rest+'/rpc/aurea_education_access_v1');
+ const args=['exec','-i',probe,'curl','-sS','--max-time','10','-w','\n%{http_code}','-X',opts.method||'POST'];
+ for(const [k,v] of new Headers(opts.headers||{}))args.push('-H',k+': '+v);
+ args.push('--data-binary','@-',String(url));
+ const x=cp.spawnSync('docker',args,{input:opts.body||'',encoding:'utf8',maxBuffer:1024*1024});
+ if(x.status!==0)throw Error('Isolated HTTP transport failed: '+x.stderr);
+ const i=x.stdout.lastIndexOf('\n');assert.ok(i>=0);return new Response(x.stdout.slice(0,i),{status:Number(x.stdout.slice(i+1)),headers:{'content-type':'application/json'}});
+};
 const rpc=async(t,o=org)=>raw(rest+'/rpc/aurea_education_access_v1',{method:'POST',headers:{authorization:'Bearer '+t,'content-type':'application/json'},body:JSON.stringify({p_org:o})});
 const answer=async(t,o=org)=>{const r=await rpc(t,o);assert.equal(r.status,200,await r.clone().text());return r.json()};
 (async()=>{
  assert.equal(await answer(token()),false,'default OFF');
  sql("INSERT INTO aurea_admin.education_stage_grants_v1(user_id,organization_id,member_role,expires_at) VALUES ('"+employee+"','"+org+"','employee',now()+interval '1 hour'),('"+manager+"','"+org+"','manager',now()+interval '1 hour')");
- assert.equal(await answer(token()),true);assert.equal(await answer(token(manager,msid)),true);assert.equal(await answer(token(),other),false);assert.equal(await answer(token(employee,msid)),false);
+ assert.equal(await answer(token()),true);assert.equal(await answer(token(manager,msid)),true);
+ sql('CREATE TABLE aurea_admin.activation_gates_v1(role text)');assert.equal(await answer(token()),false,'partial production gate must fail closed');sql('DROP TABLE aurea_admin.activation_gates_v1');assert.equal(await answer(token(),other),false);assert.equal(await answer(token(employee,msid)),false);
  assert.equal((await rpc(token()+'x')).status,401);assert.equal((await rpc(token(employee,sid,Math.floor(Date.now()/1000)-600))).status,401);
  assert.ok((await raw(rest+'/rpc/aurea_education_access_v1',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({p_org:org})})).status>=400);
  sql("UPDATE aurea_admin.education_stage_grants_v1 SET created_at=now()-interval '2 hours',expires_at=now()-interval '1 hour' WHERE user_id='"+employee+"'");
@@ -66,5 +76,5 @@ const answer=async(t,o=org)=>{const r=await rpc(t,o);assert.equal(r.status,200,a
  assert.ok(await frame.locator('[data-wp-scene]').count()>0);
  await frame.locator('[data-wp-scene]').first().click();await frame.locator('#exercise').waitFor({state:'visible'});await frame.locator('#exercise-back').click();await frame.locator('#scenario-hub').waitFor({state:'visible'});
  assert.deepEqual(unexpected,[]);await ctx.close();console.log('PASS actual compiled education browser, forced alias, CSP, sandbox and locked scenario navigation (synthetic Auth issuer, real PostgREST authorization)');
- }finally{await browser.close();global.fetch=raw;}
+ }finally{await browser.close();global.fetch=originalFetch;}
 })().catch(e=>{console.error(e);process.exitCode=1});
