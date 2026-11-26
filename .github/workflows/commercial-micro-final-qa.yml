@@ -25,7 +25,7 @@ jobs:
           BASE=7e2908e4e8c234a4bb8056f2017f02c70cfdb7c5
           ZIP=architecture/commercial-micro-qa/AUREA_Commercial_Micro_CI_INPUT.zip
           test -f "$ZIP"
-          echo "3f2d58fdaabe2857a4142ccaae17edfa85184737f348638859fc24e06f760edb  $ZIP" | sha256sum -c -
+          echo "27c3ef1c3d4e8961ccc1f56d561639ae0d894279123c372af197e3975073c81b  $ZIP" | sha256sum -c -
           git diff --exit-code "$BASE" HEAD -- . ':!.github/workflows/**' ':!architecture/commercial-micro-qa/**'
           git worktree add --detach "$RUNNER_TEMP/aurea-baseline" "$BASE"
           unzip -q "$ZIP" -d "$RUNNER_TEMP"
