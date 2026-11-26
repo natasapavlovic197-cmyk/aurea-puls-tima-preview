@@ -1,57 +1,199 @@
-name: AUREA Luminous Hamster - read-only authorization
+name: AUREA Luminous Hamster - one controlled staging deployment
 on:
   workflow_dispatch:
-permissions: {}
+permissions:
+  actions: read
 concurrency:
   group: aurea-luminous-hamster-readonly
   cancel-in-progress: false
 jobs:
-  read-only:
+  deploy-staging-once:
     if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/integration/employee-ten-domains-step5' && github.actor == 'natasapavlovic197-cmyk'
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 15
     environment: aurea-staging-admin
     steps:
-      - name: GET only - exact staging site and rollback
+      - name: Retrieve approved immutable artifact and pin CLI (no Netlify or Supabase token)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/aurea-luminous"
+          mkdir -p "$work"
+          cd "$work"
+          curl -fsSL --max-time 90 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/natasapavlovic197-cmyk/aurea-puls-tima-preview/actions/artifacts/15123951395/zip" -o closure.zip
+          echo "496d4fea87bc5bc1de7e68e7e9e74648d958b63bd6052042a0fc24ee8178e5f1  closure.zip" | sha256sum -c -
+          unzip -q closure.zip -d closure
+          (cd closure && sha256sum -c SHA256SUMS >/dev/null)
+          node22="$(find /opt/hostedtoolcache/node -maxdepth 1 -type d -name '22.*' | sort -V | tail -1)"
+          test -n "$node22"
+          export PATH="$node22/x64/bin:$PATH"
+          echo "$node22/x64/bin" >> "$GITHUB_PATH"
+          node -e 'if(Number(process.versions.node.split(".")[0])!==22)process.exit(1)'
+          env -u GH_TOKEN npm install --prefix "$work/cli" --no-audit --no-fund --save-exact netlify-cli@27.20.1 >"$work/npm.log" 2>&1
+          "$work/cli/node_modules/.bin/netlify" deploy --help >"$work/help.txt"
+          grep -q -- '--env' "$work/help.txt"
+          grep -q -- '--no-build' "$work/help.txt"
+          echo "PASS approved closure artifact and pinned CLI"
+      - name: Verify staging SQL default-deny (read-only)
+        shell: bash
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request, json, os, sys
+          query = """select (select count(*) from aurea_admin.education_stage_grants_v1) grants, (select count(*) from aurea_commercial.accounts) accounts, (select count(*) from aurea_commercial.invoices) invoices, (select count(*) from aurea_delivery_rpc.active_recipients) roster, (select count(*) from aurea_delivery_rpc.scopes) scopes, (select count(*) from aurea_private.weekly_delivery_jobs) jobs, (select relrowsecurity from pg_class where oid='aurea_admin.education_stage_grants_v1'::regclass) rls, has_table_privilege('authenticated','aurea_admin.education_stage_grants_v1','SELECT,INSERT,UPDATE,DELETE') auth_table, has_table_privilege('anon','aurea_admin.education_stage_grants_v1','SELECT,INSERT,UPDATE,DELETE') anon_table, has_function_privilege('anon','public.aurea_education_access_v1(uuid)','EXECUTE') anon_rpc, public.aurea_education_access_v1('00000000-0000-4000-8000-000000000000') unknown_access, to_regclass('aurea_admin.activation_gates_v1') is null staging_only"""
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          try:
+              req=urllib.request.Request("https://api.supabase.com/v1/projects/ublzmoroanhlcgpnxilw/database/query",data=json.dumps({"query":query,"read_only":True}).encode(),headers={"Authorization":"Bearer "+os.environ["SUPABASE_ACCESS_TOKEN"],"Content-Type":"application/json"},method="POST")
+              with urllib.request.build_opener(NoRedirect()).open(req,timeout=25) as r: data=json.load(r)
+              assert isinstance(data,list) and len(data)==1
+              x=data[0]
+              assert all(x[k]==0 for k in ("grants","accounts","invoices","roster","scopes","jobs"))
+              assert x["rls"] is True and x["staging_only"] is True
+              assert all(x[k] is False for k in ("auth_table","anon_table","anon_rpc","unknown_access"))
+          except Exception:
+              sys.exit("BLOCKED: staging SQL gate did not pass")
+          print("PASS: empty grants, commercial/delivery state and default-deny")
+          PY
+      - name: Exact baseline, private perimeter, one publish, verify or restore
         shell: bash
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         run: |
           set -euo pipefail
+          umask 077
           python3 - <<'PY'
-          import json, os, sys, urllib.request, urllib.error
-          SITE = "07df56d5-e7d6-40a4-b8ab-97b19e1760f7"
-          NAME = "luminous-hamster-ec0a1c"
-          DEPLOY = "6b035cb77e69d061dba7e1d9"
-          TOKEN = os.environ.get("NETLIFY_AUTH_TOKEN", "")
-          if not TOKEN.strip():
-              sys.exit("BLOCKED: missing protected environment secret")
+          import os, sys, json, hashlib, urllib.request, urllib.error, urllib.parse, pathlib, shutil, subprocess
+          SITE="07df56d5-e7d6-40a4-b8ab-97b19e1760f7"
+          NAME="luminous-hamster-ec0a1c"
+          OLD="6b035cb77e69d061dba7e1d9"
+          ORIGIN="https://"+NAME+".netlify.app"
+          OLD_URL="https://"+OLD+"--"+NAME+".netlify.app"
+          MARK="AUREA Micro staging one publish "+os.environ["GITHUB_RUN_ID"]
+          TOKEN=os.environ["NETLIFY_AUTH_TOKEN"]
+          ROOT=pathlib.Path(os.environ["RUNNER_TEMP"])/"aurea-luminous"
+          BASE=ROOT/"closure/staging"
+          WORK=ROOT/"candidate"
           class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self, req, fp, code, msg, headers, newurl):
-                  return None
-          opener = urllib.request.build_opener(NoRedirect())
-          def get(path):
-              req = urllib.request.Request("https://api.netlify.com/api/v1" + path,
-                  headers={"Authorization": "Bearer " + TOKEN, "Accept": "application/json"}, method="GET")
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(NoRedirect())
+          def api(path,method="GET",raw=False):
+              h={"Authorization":"Bearer "+TOKEN,"Accept":"application/json"}
+              if raw: h.update({"Content-Type":"application/vnd.bitballoon.v1.raw","Accept":"application/vnd.bitballoon.v1.raw"})
+              req=urllib.request.Request("https://api.netlify.com/api/v1"+path,headers=h,method=method,data=b"" if method=="POST" else None)
               try:
-                  with opener.open(req, timeout=20) as response:
-                      if response.status != 200:
-                          sys.exit("BLOCKED: unexpected HTTP status")
-                      return json.loads(response.read(2_000_000))
+                  with opener.open(req,timeout=30) as r:
+                      data=r.read(4_000_000)
+                      return data if raw else json.loads(data)
+              except urllib.error.HTTPError as e: raise RuntimeError("Netlify API HTTP "+str(e.code)) from None
+          def site():
+              x=api("/sites/"+SITE)
+              assert x["id"]==SITE and x["name"]==NAME and not x.get("custom_domain")
+              return x
+          def published():
+              return (site().get("published_deploy") or {}).get("id")
+          def check_ready(d):
+              x=api("/sites/"+SITE+"/deploys/"+d)
+              assert x["site_id"]==SITE and x["id"]==d and x["state"]=="ready"
+              return x
+          def locked(url,method="GET"):
+              req=urllib.request.Request(url,method=method,data=b"{}" if method=="POST" else None,headers={"User-Agent":"AUREA-Staging-Privacy-QA","Content-Type":"application/json"} if method=="POST" else {"User-Agent":"AUREA-Staging-Privacy-QA"})
+              try:
+                  with opener.open(req,timeout=15) as r: return False
               except urllib.error.HTTPError as e:
-                  sys.exit("BLOCKED: Netlify API HTTP " + str(e.code))
-              except Exception:
-                  sys.exit("BLOCKED: API transport or response error")
-          site = get("/sites/" + SITE)
-          if site.get("id") != SITE or site.get("name") != NAME:
-              sys.exit("BLOCKED: staging site identity mismatch")
-          if (site.get("published_deploy") or {}).get("id") != DEPLOY:
-              sys.exit("BLOCKED: published deployment has changed or cannot be confirmed")
-          deploy = get("/sites/" + SITE + "/deploys/" + DEPLOY)
-          if deploy.get("id") != DEPLOY or deploy.get("site_id") != SITE or deploy.get("state") != "ready":
-              sys.exit("BLOCKED: rollback deployment identity or state mismatch")
-          print("PASS: authenticated read-only Netlify GETs; exact staging site and current ready deploy")
-          print("Site ID:", SITE)
-          print("Published deploy:", DEPLOY)
-          print("NOTE: host privacy and billing must still be confirmed in Netlify UI; no write or deploy attempted.")
+                  if e.code in (401,403): return True
+                  loc=urllib.parse.urlparse(e.headers.get("Location",""))
+                  return e.code in (301,302,303,307,308) and loc.scheme=="https" and loc.hostname=="app.netlify.com" and any(w in loc.path.lower() for w in ("login","authorize","auth"))
+          def digest(b): return hashlib.sha256(b).hexdigest()
+          def expect(p,h):
+              assert digest(p.read_bytes())==h, "candidate SHA256 mismatch: "+p.name
+          def remote_file(p):
+              return api("/sites/"+SITE+"/files/"+urllib.parse.quote(p,safe="/"),raw=True)
+          def baseline():
+              assert published()==OLD, "published deploy changed"
+              check_ready(OLD)
+              # No unrelated deploy, no public site, no new integration.
+              assert all(locked(h+p) for h in (ORIGIN,OLD_URL) for p in ("/","/auth/")), "private perimeter not confirmed"
+              current=api("/sites/"+SITE+"/functions")
+              assert isinstance(current,list) and all(isinstance(x,dict) and not x.get("functions") for x in current), "existing functions or unrecognized inventory"
+              print("PASS: exact private site, retained ready deploy and no existing functions",flush=True)
+          attempted=False
+          new=None
+          try:
+              baseline()
+              WORK.mkdir()
+              (WORK/"publish/auth").mkdir(parents=True)
+              originals={"index.html":"bd6ff6fd85233cfca3aae743d25ba0473e4c31b2b2ffc6908140c40d41f07632","auth/index.html":"d327d717f54ebf0c0850a311cb62c41836bad54209e23ffbfdd92f08fd51a680"}
+              for p,h in originals.items():
+                  raw=remote_file(p)
+                  assert digest(raw)==h, "owner-downloaded baseline hash mismatch: "+p
+                  (WORK/"publish"/p).write_bytes(raw)
+              raw=remote_file("_headers")
+              assert raw==b"/*\n  Referrer-Policy: no-referrer\n  X-Content-Type-Options: nosniff\n  Cache-Control: no-store\n"
+              scope="  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-src 'self' about:; connect-src 'self' https://ublzmoroanhlcgpnxilw.supabase.co; form-action 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'\n  Cache-Control: no-store\n"
+              (WORK/"publish/_headers").write_bytes(raw+("\n/puls-app/edukacija\n"+scope+"\n/puls-app/edukacija/*\n"+scope).encode())
+              expect(WORK/"publish/_headers","4b1bcc759cb8fe5cbac213079b93b574019a39faf5f5426b589742a40ac3b894")
+              shutil.copyfile(BASE/"publish/_redirects",WORK/"publish/_redirects")
+              expect(WORK/"publish/_redirects","06f521aecfd6922b371701ce4531eb86053fb10f26cf6e15c0622a2604515def")
+              shutil.copyfile(BASE/"netlify.toml",WORK/"netlify.toml")
+              expect(WORK/"netlify.toml","0b5e3894d5e90ecebc670b00a64c897373840921bb260ba72ed0afa054ed35bb")
+              dest=WORK/"publish/puls-app/edukacija"
+              shutil.copytree(BASE/"publish/puls-app/edukacija",dest)
+              for p,h in {"education-config.js":"05939a92c450ace6f0341c38b99111c295ee08fb963d43aa2ade452624bd887b","education.bundle.js":"6e2714cc3f070e94ebc1e9b8d0650950f8e1354b3d621b9091dbd0419673ef3c","education.css":"fe78f7683f3d4db9316197b8823a325ed4567211643199434d4f1becb689e2b6","index.html":"5456d8161691282cdead941e8ab09cffd33b2ab6b8e1bb3000930bf19019b59e"}.items(): expect(dest/p,h)
+              shutil.copytree(BASE/"server-functions",WORK/"server-functions")
+              expect(WORK/"server-functions/aurea-education.mjs","e35c0cdfce1a694b3c300120eec72182deba5d408ab2f84a854547d2402af244")
+              p=dest/"education-config.js"
+              s=p.read_text()
+              cfg=json.loads(s.split("Object.freeze(",1)[1].rsplit(");",1)[0])
+              assert cfg["environment"]=="staging" and cfg["url"]=="https://ublzmoroanhlcgpnxilw.supabase.co" and cfg["key"].startswith("sb_publishable_") and cfg["enabled"] is False
+              cfg.update(origin=ORIGIN,enabled=True)
+              p.write_text("globalThis.AUREA_EDUCATION_CONFIG=Object.freeze("+json.dumps(cfg,separators=(",",":"))+");\n")
+              expect(p,"695d2df4a3898a7ce18501e8466b21135e716e37b9d3fbbc077ac8ae481126a6")
+              assert published()==OLD, "baseline moved during preparation"
+              print("PASS: exact approved candidate reconstructed with test-only config",flush=True)
+              # User-approved budget: one production-context deploy on this STAGING site only.
+              # Latest authenticated dashboard: 1,118 credits, auto-recharge OFF.
+              # No hard per-deploy cap; 15 deploy credits plus bounded request reserve.
+              settings={"AUREA_ENVIRONMENT":"staging","AUREA_SUPABASE_URL":cfg["url"],"AUREA_SUPABASE_PUBLISHABLE_KEY":cfg["key"],"AUREA_STAGE_EDUCATION_ORIGIN":ORIGIN,"AUREA_STAGE_EDUCATION_APPROVAL":"approved-isolated-staging-education-v1","AUREA_ENABLE_STAGE_EDUCATION":"true"}
+              cli=str(ROOT/"cli/node_modules/.bin/netlify")
+              cmd=[cli,"deploy","--site",SITE,"--prod","--no-build","--dir","publish","--functions","server-functions","--json","--message",MARK,"--timeout","300"]
+              for k,v in settings.items(): cmd.extend(["--env",k+"="+v])
+              # No site-level env writes, no build or retry. The pinned CLI sets function env per deploy only.
+              attempted=True
+              with (ROOT/"deploy.json").open("w") as out,(ROOT/"deploy.stderr").open("w") as err:
+                  result=subprocess.run(cmd,cwd=WORK,stdout=out,stderr=err,timeout=420,env={**os.environ,"CI":"true","NETLIFY_SITE_ID":SITE,"NETLIFY_TELEMETRY_DISABLED":"1"})
+              assert result.returncode==0, "single CLI publish failed; no retry"
+              new=published()
+              assert new and new!=OLD, "new published ID missing"
+              d=check_ready(new)
+              assert d.get("title")==MARK, "unexpected published deploy title"
+              for p,h in originals.items(): assert digest(remote_file(p))==h, "legacy file changed"
+              assert digest(remote_file("puls-app/edukacija/education-config.js"))=="695d2df4a3898a7ce18501e8466b21135e716e37b9d3fbbc077ac8ae481126a6"
+              new_url="https://"+new+"--"+NAME+".netlify.app"
+              assert all(locked(h+p) for h in (ORIGIN,new_url) for p in ("/","/auth/","/puls-app/edukacija/","/puls-app/edukacija/education.bundle.js")), "post-publish privacy failure"
+              assert all(locked(h+p,"POST") for h in (ORIGIN,new_url) for p in ("/api/education","/.netlify/functions/aurea-education")), "anonymous API not denied"
+              functions=api("/sites/"+SITE+"/functions")
+              assert "aurea-education" in json.dumps(functions), "function not visible"
+              print("PASS: one published staging deployment, unchanged legacy pages, private routes, anonymous denial and function inventory")
+              print("NEW DEPLOY ID:",new)
+              print("ROLLBACK ID:",OLD)
+          except Exception as e:
+              # Never restore another actor's deployment; identify our own by the exact marker.
+              print("BLOCKED:",str(e) if isinstance(e,(AssertionError,RuntimeError)) else type(e).__name__,flush=True)
+              if attempted:
+                  try:
+                      current=published()
+                      if current and current!=OLD and check_ready(current).get("title")==MARK:
+                          api("/sites/"+SITE+"/deploys/"+OLD+"/restore",method="POST")
+                          assert published()==OLD
+                          print("PASS: restored original deployment; no second publish",flush=True)
+                      elif current==OLD: print("Original deploy still published",flush=True)
+                      else: print("STOP: unexpected deploy; owner review required",flush=True)
+                  except Exception: print("STOP: rollback not verified; owner review required",flush=True)
+              sys.exit(1)
           PY
