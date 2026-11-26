@@ -1,0 +1,3 @@
+# Isolated PG17 / Build QA only
+
+Pinned baseline: 7e2908e4e8c234a4bb8056f2017f02c70cfdb7c5. Inherited workflows intentionally absent in this QA branch only. Do not merge this branch. The only workflow triggers on the exact sanitized CI archive at architecture/commercial-micro-qa/AUREA_Commercial_Micro_CI_INPUT.zip. Expected SHA-256: 3f2d58fdaabe2857a4142ccaae17edfa85184737f348638859fc24e06f760edb. No live database, credentials, mail or deployment. All fixture SQL uses disposable Docker PostgreSQL 17. The ZIP excludes historical staging fingerprints and operational notes; candidate SQL and build/test files are byte-identical to the original verified archive.

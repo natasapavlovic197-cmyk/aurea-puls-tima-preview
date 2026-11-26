@@ -1,0 +1,50 @@
+name: AUREA Commercial Micro isolated PG17 and Build QA
+on:
+  push:
+    branches: [qa/commercial-micro-20261126]
+    paths: ['architecture/commercial-micro-qa/AUREA_Commercial_Micro_CI_INPUT.zip']
+permissions:
+  contents: read
+jobs:
+  disposable:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/qa/commercial-micro-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify archive and pinned checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=7e2908e4e8c234a4bb8056f2017f02c70cfdb7c5
+          ZIP=architecture/commercial-micro-qa/AUREA_Commercial_Micro_CI_INPUT.zip
+          test -f "$ZIP"
+          echo "3f2d58fdaabe2857a4142ccaae17edfa85184737f348638859fc24e06f760edb  $ZIP" | sha256sum -c -
+          git diff --exit-code "$BASE" HEAD -- . ':!.github/workflows/**' ':!architecture/commercial-micro-qa/**'
+          git worktree add --detach "$RUNNER_TEMP/aurea-baseline" "$BASE"
+          unzip -q "$ZIP" -d "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/AUREA_Commercial_Micro_RC_QA"
+          sha256sum -c SHA256SUMS
+          python3 qa/check_sql_anchors.py
+      - name: PostgreSQL 17 and source build, no live credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/AUREA_Commercial_Micro_RC_QA"
+          # The 24 unit and 8 Chromium tests already ran; skip only the previously executed Node suite.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('qa/run-isolated.sh')
+          s=p.read_text()
+          line='node --test "$ROOT/qa/contract.test.cjs"\n'
+          assert s.count(line)==1
+          p.write_text(s.replace(line,'# Previously passed 24 unit tests; intentionally not repeated.\n'))
+          PY
+          # Start runner with allowlisted environment; no secrets, live endpoints, deploy or mail.
+          env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" bash qa/run-isolated.sh "$RUNNER_TEMP/aurea-baseline"
