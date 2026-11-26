@@ -40,25 +40,46 @@ jobs:
       - name: Verify staging SQL default-deny (read-only)
         shell: bash
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PGPASSWORD: ${{ secrets.SUPABASE_ADMIN_DB_PASSWORD }}
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import urllib.request, json, os, sys
-          query = """select (select count(*) from aurea_admin.education_stage_grants_v1) grants, (select count(*) from aurea_commercial.accounts) accounts, (select count(*) from aurea_commercial.invoices) invoices, (select count(*) from aurea_delivery_rpc.active_recipients) roster, (select count(*) from aurea_delivery_rpc.scopes) scopes, (select count(*) from aurea_private.weekly_delivery_jobs) jobs, (select relrowsecurity from pg_class where oid='aurea_admin.education_stage_grants_v1'::regclass) rls, has_table_privilege('authenticated','aurea_admin.education_stage_grants_v1','SELECT,INSERT,UPDATE,DELETE') auth_table, has_table_privilege('anon','aurea_admin.education_stage_grants_v1','SELECT,INSERT,UPDATE,DELETE') anon_table, has_function_privilege('anon','public.aurea_education_access_v1(uuid)','EXECUTE') anon_rpc, public.aurea_education_access_v1('00000000-0000-4000-8000-000000000000') unknown_access, to_regclass('aurea_admin.activation_gates_v1') is null staging_only"""
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self,*args,**kwargs): return None
+          umask 077
+          if [ -z "${PGPASSWORD:-}" ]; then echo 'BLOCKED: admin secret absent'; exit 1; fi
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"; unset PGPASSWORD' EXIT
+          curl --fail --silent --show-error --proto '=https' --max-time 20 'https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt' -o "$work/ca.crt"
+          fingerprint="$(openssl x509 -in "$work/ca.crt" -outform DER | sha256sum | cut -d ' ' -f 1)"
+          if [ "$fingerprint" != '807025ad50d4ed219d2c9c7d299c004f824eb00cf7f65afef607d07b72e6cafa' ]; then echo 'BLOCKED: CA differs from verified TLS evidence'; exit 1; fi
+          command -v psql >/dev/null || { echo 'BLOCKED: psql unavailable'; exit 1; }
+          export PGHOST=aws-1-eu-west-1.pooler.supabase.com PGPORT=5432 PGDATABASE=postgres PGUSER=postgres.ublzmoroanhlcgpnxilw PGSSLMODE=verify-full PGSSLROOTCERT="$work/ca.crt" PGCONNECT_TIMEOUT=12 PGAPPNAME=aurea_admin_readonly_preflight
+          export PGOPTIONS='-c default_transaction_read_only=on -c statement_timeout=5000'
+          if ! psql -X -w -qAt -v ON_ERROR_STOP=1 >"$work/result" 2>"$work/error" <<'SQL'
+          BEGIN READ ONLY;
+          SELECT row_to_json(gate) FROM (
+            SELECT (session_user='postgres' AND current_user='postgres' AND current_database()='postgres' AND current_setting('transaction_read_only')='on') AS session_ok, checks.* FROM (
+              select (select count(*) from aurea_admin.education_stage_grants_v1) grants, (select count(*) from aurea_commercial.accounts) accounts, (select count(*) from aurea_commercial.invoices) invoices, (select count(*) from aurea_delivery_rpc.active_recipients) roster, (select count(*) from aurea_delivery_rpc.scopes) scopes, (select count(*) from aurea_private.weekly_delivery_jobs) jobs, (select relrowsecurity from pg_class where oid='aurea_admin.education_stage_grants_v1'::regclass) rls, has_table_privilege('authenticated','aurea_admin.education_stage_grants_v1','SELECT,INSERT,UPDATE,DELETE') auth_table, has_table_privilege('anon','aurea_admin.education_stage_grants_v1','SELECT,INSERT,UPDATE,DELETE') anon_table, has_function_privilege('anon','public.aurea_education_access_v1(uuid)','EXECUTE') anon_rpc, public.aurea_education_access_v1('00000000-0000-4000-8000-000000000000') unknown_access, to_regclass('aurea_admin.activation_gates_v1') is null staging_only
+            ) AS checks
+          ) AS gate;
+          ROLLBACK;
+          SQL
+          then
+            echo 'BLOCKED: verified staging SQL connection or read-only query failed; raw diagnostics suppressed'
+            exit 1
+          fi
+          python3 - "$work/result" <<'PY'
+          import json, sys
+          expected = dict.fromkeys(("grants","accounts","invoices","roster","scopes","jobs"),0)
+          expected.update(dict.fromkeys(("rls","staging_only","session_ok"),True))
+          expected.update(dict.fromkeys(("auth_table","anon_table","anon_rpc","unknown_access"),False))
           try:
-              req=urllib.request.Request("https://api.supabase.com/v1/projects/ublzmoroanhlcgpnxilw/database/query",data=json.dumps({"query":query,"read_only":True}).encode(),headers={"Authorization":"Bearer "+os.environ["SUPABASE_ACCESS_TOKEN"],"Content-Type":"application/json"},method="POST")
-              with urllib.request.build_opener(NoRedirect()).open(req,timeout=25) as r: data=json.load(r)
-              assert isinstance(data,list) and len(data)==1
-              x=data[0]
-              assert all(x[k]==0 for k in ("grants","accounts","invoices","roster","scopes","jobs"))
-              assert x["rls"] is True and x["staging_only"] is True
-              assert all(x[k] is False for k in ("auth_table","anon_table","anon_rpc","unknown_access"))
+              x=json.load(open(sys.argv[1]))
+              assert isinstance(x,dict) and set(x)==set(expected)
           except Exception:
-              sys.exit("BLOCKED: staging SQL gate did not pass")
-          print("PASS: empty grants, commercial/delivery state and default-deny")
+              sys.exit("BLOCKED: unexpected staging SQL result format")
+          failed=[k for k,v in expected.items() if type(x[k]) is not type(v) or x[k]!=v]
+          if failed:
+              sys.exit("BLOCKED: failed staging SQL controls: "+", ".join(failed))
+          print("PASS: verified staging SQL session, explicit read-only, empty grants, commercial/delivery state and default-deny")
           PY
       - name: Exact baseline, private perimeter, one publish, verify or restore
         shell: bash
