@@ -91,7 +91,7 @@ const answer=async(t,o=org)=>{const r=await rpc(t,o);assert.equal(r.status,200,a
  assert.equal(await page.locator('iframe').getAttribute('sandbox'),'allow-scripts');
  assert.equal(await page.locator('iframe').evaluate(f=>f.contentDocument===null),true);
  assert.ok(await frame.locator('[data-wp-scene]').count()>0);
- await frame.locator('[data-wp-scene]').first().click();await frame.locator('#exercise').waitFor({state:'visible'});await frame.locator('#exercise-back').click();await frame.locator('#scenario-hub').waitFor({state:'visible'});
+ await frame.locator('[data-wp-scene]').first().click();await frame.locator('#exercise').waitFor({state:'visible'});await frame.locator('#exercise-back:visible,#aureaPolishBack:visible').first().click({timeout:10000});await frame.locator('#scenario-hub').waitFor({state:'visible'});
  assert.deepEqual(unexpected,[]);await ctx.close();console.log('PASS actual compiled education browser, forced alias, CSP, sandbox and locked scenario navigation (synthetic Auth issuer, real PostgREST authorization)');
  }finally{await browser.close();host.closeAllConnections();await new Promise(r=>host.close(r));global.fetch=originalFetch;}
 })().catch(e=>{console.error(e);process.exitCode=1});
