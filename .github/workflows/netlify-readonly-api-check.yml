@@ -141,7 +141,25 @@ jobs:
               # No unrelated deploy, no public site, no new integration.
               assert all(locked(h+p) for h in (ORIGIN,OLD_URL) for p in ("/","/auth/")), "private perimeter not confirmed"
               current=api("/sites/"+SITE+"/functions")
-              assert isinstance(current,list) and all(isinstance(x,dict) and not x.get("functions") for x in current), "existing functions or unrecognized inventory"
+              # Accept only an explicit empty inventory, not absent fields, null or unknown shapes.
+              # The published schema is a list of groups with functions arrays; some API
+              # responses may instead wrap the explicit list in a functions object.
+              if isinstance(current,dict) and set(current)=={"functions"}:
+                  groups=current["functions"]
+                  print("Functions inventory: explicit functions envelope",flush=True)
+              else:
+                  groups=current
+                  print("Functions inventory response type: "+type(current).__name__,flush=True)
+              if isinstance(groups,list):
+                  print("Functions inventory entries: "+str(len(groups)),flush=True)
+                  valid=all(isinstance(x,dict) and isinstance(x.get("functions"),list) and len(x["functions"])==0 for x in groups)
+                  if groups and not valid:
+                      print("Inventory nested function list lengths: "+str([len(x["functions"]) if isinstance(x,dict) and isinstance(x.get("functions"),list) else "unrecognized" for x in groups]),flush=True)
+              else:
+                  valid=False
+                  if isinstance(current,dict):
+                      print("Inventory object field count: "+str(len(current))+"; functions field type: "+type(current.get("functions")).__name__,flush=True)
+              assert isinstance(groups,list) and valid, "existing functions or unrecognized inventory; no publish attempted"
               print("PASS: exact private site, retained ready deploy and no existing functions",flush=True)
           attempted=False
           new=None
