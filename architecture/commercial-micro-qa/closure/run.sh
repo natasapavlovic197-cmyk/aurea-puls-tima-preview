@@ -20,7 +20,9 @@ docker pull postgrest/postgrest:v12.2.3
 docker pull curlimages/curl:8.12.1
 docker network create --internal "$NET" >/dev/null
 docker run -d --name "$DB" --network "$NET" -e POSTGRES_PASSWORD=disposable_qa_only -e POSTGRES_DB=aurea_fixture postgres:17 >/dev/null
-for i in $(seq 1 60); do if docker exec "$DB" pg_isready -U postgres -d aurea_fixture >/dev/null 2>&1;then break;fi;sleep 1;done
+ready=false
+for i in $(seq 1 60); do if docker exec "$DB" pg_isready -h 127.0.0.1 -U postgres -d aurea_fixture >/dev/null 2>&1;then ready=true;break;fi;sleep 1;done
+if [[ "$ready" != true ]];then docker logs "$DB" 2>&1|tail -40;exit 1;fi
 sql(){ docker exec -i "$DB" psql -X -v ON_ERROR_STOP=1 -U postgres -d aurea_fixture "$@"; }
 test "$(sql -Atc "select current_setting('server_version_num')::int/10000")" = 17
 sql < "$RC/qa/disposable-baseline.sql"
