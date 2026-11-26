@@ -1,0 +1,41 @@
+name: AUREA Commercial Micro integration closure only
+on:
+  push:
+    branches: [qa/commercial-micro-20261126]
+    paths: ['architecture/commercial-micro-qa/closure/**', '.github/workflows/commercial-micro-closure.yml']
+permissions:
+  contents: read
+jobs:
+  closure:
+    if: github.repository == 'natasapavlovic197-cmyk/aurea-puls-tima-preview' && github.ref == 'refs/heads/qa/commercial-micro-20261126'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify pinned source and prior input
+        run: |
+          set -euo pipefail
+          BASE=7e2908e4e8c234a4bb8056f2017f02c70cfdb7c5
+          ZIP=architecture/commercial-micro-qa/AUREA_Commercial_Micro_CI_INPUT.zip
+          echo "27c3ef1c3d4e8961ccc1f56d561639ae0d894279123c372af197e3975073c81b  $ZIP" | sha256sum -c -
+          git diff --exit-code "$BASE" HEAD -- . ':!.github/workflows/**' ':!architecture/commercial-micro-qa/**'
+          test "$(find .github/workflows -type f | wc -l)" = 2
+          git worktree add --detach "$RUNNER_TEMP/aurea-base" "$BASE"
+          unzip -q "$ZIP" -d "$RUNNER_TEMP"
+          (cd "$RUNNER_TEMP/AUREA_Commercial_Micro_RC_QA"; sha256sum -c SHA256SUMS)
+      - name: New signed Auth, route, CSP and build acceptance
+        run: |
+          env -i PATH="$PATH" HOME="$HOME" TMPDIR="$RUNNER_TEMP" bash architecture/commercial-micro-qa/closure/run.sh "$RUNNER_TEMP/aurea-base" "$RUNNER_TEMP/AUREA_Commercial_Micro_RC_QA" "$RUNNER_TEMP/aurea-closure"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: aurea-commercial-micro-closure
+          path: ${{ runner.temp }}/aurea-closure/
+          retention-days: 7
+          if-no-files-found: error
