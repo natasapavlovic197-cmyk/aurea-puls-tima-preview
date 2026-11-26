@@ -6,7 +6,7 @@ RC=$2
 OUT=$3
 test "$(git -C "$SRC" rev-parse HEAD)" = 7e2908e4e8c234a4bb8056f2017f02c70cfdb7c5
 W=$(mktemp -d)
-DB="aurea-closure-db-$$"; NET="aurea-closure-net-$$"; REST="aurea-closure-rest-$"; PROBE="aurea-closure-probe-$"
+DB="aurea-closure-db-${BASHPID}"; NET="aurea-closure-net-${BASHPID}"; REST="aurea-closure-rest-${BASHPID}"; PROBE="aurea-closure-probe-${BASHPID}"
 cleanup(){ docker rm -f "$PROBE" "$REST" "$DB" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "$W"; }
 trap cleanup EXIT
 python3 "$HERE/prepare.py" "$RC"
@@ -15,6 +15,7 @@ ln -s "$W/deps/node_modules" "$SRC/node_modules"
 exclude=$(git -C "$SRC" rev-parse --path-format=absolute --git-path info/exclude)
 printf '\n/node_modules\n' >> "$exclude"
 node "$HERE/build.cjs" "$SRC" "$RC" "$OUT"
+(cd "$OUT";find . -type f ! -name SHA256SUMS -print0|sort -z|xargs -0 sha256sum > "$W/sums";cp "$W/sums" SHA256SUMS)
 docker pull postgres:17
 docker pull postgrest/postgrest:v12.2.3
 docker pull curlimages/curl:8.12.1
@@ -45,4 +46,4 @@ sql < "$RC/database/micro.rollback.sql"
 test "$(sql -Atc "select to_regclass('aurea_admin.education_stage_grants_v1') is null and to_regprocedure('public.aurea_education_access_v1(uuid)') is null")" = t
 sql -At < "$RC/database/history.readonly.sql" > "$W/history.rollback";cmp "$W/history.before" "$W/history.rollback"
 echo 'PASS new staging grant rollback and synthetic history parity'
-(cd "$OUT";find . -type f -print0|sort -z|xargs -0 sha256sum > "$W/sums";cp "$W/sums" SHA256SUMS)
+(cd "$OUT";find . -type f ! -name SHA256SUMS -print0|sort -z|xargs -0 sha256sum > "$W/sums";cp "$W/sums" SHA256SUMS)

@@ -39,3 +39,10 @@ jobs:
           path: ${{ runner.temp }}/aurea-closure/
           retention-days: 7
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: aurea-commercial-micro-build-NOT-APPROVED
+          path: ${{ runner.temp }}/aurea-closure/
+          retention-days: 7
+          if-no-files-found: warn
